@@ -2,80 +2,66 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Rooster Crow Counter (Simple)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🐓 Rooster Crow Counter (Sound Test)</title>
   <style>
     body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
-    h1 { font-size: 28px; }
-    #count { font-size: 40px; color: green; margin: 20px; }
-    #status { margin: 10px; font-weight: bold; }
-    #bar { width: 300px; height: 20px; background: #ddd; margin: 20px auto; }
-    #level { height: 100%; width: 0; background: limegreen; }
+    h1 { color: #222; }
+    button { padding: 10px 20px; font-size: 16px; margin: 10px; cursor: pointer; }
+    #count { font-size: 24px; font-weight: bold; color: green; }
+    #status { font-size: 18px; margin-top: 10px; }
   </style>
 </head>
 <body>
-  <h1>🐓 Rooster Crow Counter</h1>
-  <button id="startBtn">🎤 Start Listening</button>
-  <div id="status">Click Start to begin...</div>
-  <div id="bar"><div id="level"></div></div>
+  <h1>🐓 Rooster Crow Counter (Sound Test)</h1>
+  <button id="startBtn">🎙 Start Listening</button>
+  <div id="status">Not started</div>
   <div>Crow Count: <span id="count">0</span></div>
 
   <script>
     let audioContext, analyser, dataArray, source;
     let crowCount = 0;
-    let isListening = false;
-    let lastCrowTime = 0;
+    const threshold = 20; // sensitivity
 
-    const startBtn = document.getElementById("startBtn");
-    const statusEl = document.getElementById("status");
-    const countEl = document.getElementById("count");
-    const levelEl = document.getElementById("level");
-
-    startBtn.onclick = async () => {
-      if (isListening) return;
-      isListening = true;
-      statusEl.textContent = "Listening...";
-
+    document.getElementById("startBtn").addEventListener("click", async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        document.getElementById("status").textContent = "Requesting microphone...";
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        analyser = audioContext.createAnalyser();
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         source = audioContext.createMediaStreamSource(stream);
-        source.connect(analyser);
 
+        analyser = audioContext.createAnalyser();
         analyser.fftSize = 256;
         const bufferLength = analyser.frequencyBinCount;
         dataArray = new Uint8Array(bufferLength);
 
-        listenLoop();
+        source.connect(analyser);
+        document.getElementById("status").textContent = "Listening...";
+        listen();
       } catch (err) {
-        statusEl.textContent = "Microphone error: " + err.message;
+        document.getElementById("status").textContent = "Microphone error";
+        console.error("Microphone error:", err);
       }
-    };
+    });
 
-    function listenLoop() {
-      requestAnimationFrame(listenLoop);
-      analyser.getByteTimeDomainData(dataArray);
+    function listen() {
+      requestAnimationFrame(listen);
+      analyser.getByteFrequencyData(dataArray);
 
       // Calculate average volume
-      let sum = 0;
+      let values = 0;
       for (let i = 0; i < dataArray.length; i++) {
-        const v = (dataArray[i] - 128) / 128.0;
-        sum += v * v;
+        values += dataArray[i];
       }
-      const volume = Math.sqrt(sum / dataArray.length);
+      let average = values / dataArray.length;
 
-      // Update bar
-      const percent = Math.min(100, volume * 400); 
-      levelEl.style.width = percent + "%";
+      // Debug log
+      console.log("Volume:", average);
 
-      // Threshold detection
-      if (volume > 0.15) { 
-        const now = Date.now();
-        if (now - lastCrowTime > 2000) {  // 2 sec gap between crows
-          crowCount++;
-          countEl.textContent = crowCount;
-          lastCrowTime = now;
-        }
+      if (average > threshold) {
+        crowCount++;
+        document.getElementById("status").textContent = "Crow detected!";
+        document.getElementById("count").textContent = crowCount;
       }
     }
   </script>
