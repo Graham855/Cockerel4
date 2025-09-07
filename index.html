@@ -2,192 +2,82 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>🐓 Rooster Crow Counter (Simple Version)</title>
+  <title>Rooster Crow Counter (Simple)</title>
   <style>
-    body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
-    h1 { font-size: 2em; }
-    #count { font-size: 2em; color: green; }
-    button { padding: 10px 20px; margin: 10px; cursor: pointer; }
-    table { margin: 20px auto; border-collapse: collapse; width: 70%; }
-    th, td { border: 1px solid #ccc; padding: 8px; }
-    th { background: #f4f4f4; }
-    #volumeBar { width: 300px; height: 20px; background: #ddd; margin: 20px auto; }
-    #volumeLevel { height: 100%; background: green; width: 0%; }
-    .settings { border: 1px solid #ccc; padding: 15px; margin: 20px auto; width: 70%; text-align: left; background: #fafafa; }
-    .settings h2 { text-align: center; }
-    .setting { margin: 10px 0; }
-    label { display: block; margin-bottom: 5px; }
-    input[type=range] { width: 100%; }
+    body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+    h1 { font-size: 28px; }
+    #count { font-size: 40px; color: green; margin: 20px; }
+    #status { margin: 10px; font-weight: bold; }
+    #bar { width: 300px; height: 20px; background: #ddd; margin: 20px auto; }
+    #level { height: 100%; width: 0; background: limegreen; }
   </style>
 </head>
 <body>
   <h1>🐓 Rooster Crow Counter</h1>
-  <p>Status: <span id="status">Click Start to begin...</span></p>
-  <p>Crow Count: <span id="count">0</span></p>
-  <button id="startBtn">🎙 Start Listening</button>
-
-  <div id="volumeBar"><div id="volumeLevel"></div></div>
-
-  <!-- Settings Panel -->
-  <div class="settings">
-    <h2>⚙️ Detection Settings</h2>
-    <div class="setting">
-      <label for="sensitivity">Sensitivity (Threshold): <span id="sensitivityVal">0.2</span></label>
-      <input type="range" id="sensitivity" min="0" max="1" step="0.01" value="0.2">
-    </div>
-    <button id="saveBtn">💾 Save Settings</button>
-    <button id="resetBtn">🔄 Reset Defaults</button>
-  </div>
-
-  <!-- Log -->
-  <h2>📜 Crow Log</h2>
-  <ul id="crowLog"></ul>
-
-  <!-- Daily Table -->
-  <h2>📊 Daily Log</h2>
-  <table>
-    <thead><tr><th>Date</th><th>Count</th></tr></thead>
-    <tbody id="logTable"></tbody>
-  </table>
-
-  <!-- Hourly Table -->
-  <h2>🕒 Hourly Log (Today)</h2>
-  <table>
-    <thead><tr><th>Hour</th><th>Count</th></tr></thead>
-    <tbody id="hourlyTable"></tbody>
-  </table>
+  <button id="startBtn">🎤 Start Listening</button>
+  <div id="status">Click Start to begin...</div>
+  <div id="bar"><div id="level"></div></div>
+  <div>Crow Count: <span id="count">0</span></div>
 
   <script>
-    let count = 0;
-    let audioContext, analyser, dataArray;
-    let lastDetected = 0;
+    let audioContext, analyser, dataArray, source;
+    let crowCount = 0;
+    let isListening = false;
+    let lastCrowTime = 0;
 
-    const defaultSettings = { sensitivity: 0.2 };
-    let settings = JSON.parse(localStorage.getItem("crowSettings")) || defaultSettings;
+    const startBtn = document.getElementById("startBtn");
+    const statusEl = document.getElementById("status");
+    const countEl = document.getElementById("count");
+    const levelEl = document.getElementById("level");
 
-    let logs = JSON.parse(localStorage.getItem("crowLogs")) || {};
-    let hourlyLogs = JSON.parse(localStorage.getItem("hourlyLogs")) || {};
+    startBtn.onclick = async () => {
+      if (isListening) return;
+      isListening = true;
+      statusEl.textContent = "Listening...";
 
-    function applySettingsUI() {
-      document.getElementById("sensitivity").value = settings.sensitivity;
-      document.getElementById("sensitivityVal").textContent = settings.sensitivity;
-    }
-
-    function saveSettings() {
-      localStorage.setItem("crowSettings", JSON.stringify(settings));
-      alert("Settings saved!");
-    }
-
-    function resetSettings() {
-      settings = { ...defaultSettings };
-      saveSettings();
-      applySettingsUI();
-    }
-
-    function updateDailyTable() {
-      const tbody = document.getElementById("logTable");
-      tbody.innerHTML = "";
-      Object.keys(logs).forEach(date => {
-        tbody.innerHTML += `<tr><td>${date}</td><td>${logs[date]}</td></tr>`;
-      });
-    }
-
-    function updateHourlyTable() {
-      const tbody = document.getElementById("hourlyTable");
-      tbody.innerHTML = "";
-      const today = new Date().toISOString().split("T")[0];
-      const todayHours = hourlyLogs[today] || Array(24).fill(0);
-      todayHours.forEach((val, hour) => {
-        tbody.innerHTML += `<tr><td>${hour}:00</td><td>${val}</td></tr>`;
-      });
-    }
-
-    function saveLogs() {
-      localStorage.setItem("crowLogs", JSON.stringify(logs));
-      localStorage.setItem("hourlyLogs", JSON.stringify(hourlyLogs));
-      updateDailyTable();
-      updateHourlyTable();
-    }
-
-    function logCrow() {
-      const now = new Date();
-      const today = now.toISOString().split("T")[0];
-      const hour = now.getHours();
-
-      logs[today] = (logs[today] || 0) + 1;
-      if (!hourlyLogs[today]) hourlyLogs[today] = Array(24).fill(0);
-      hourlyLogs[today][hour]++;
-
-      saveLogs();
-
-      const li = document.createElement("li");
-      li.textContent = `Crow at ${now.toLocaleTimeString()}`;
-      document.getElementById("crowLog").appendChild(li);
-    }
-
-    function incrementCount() {
-      const now = Date.now();
-      if (now - lastDetected > 2000) { // 2s cooldown
-        count++;
-        document.getElementById("count").textContent = count;
-        logCrow();
-        lastDetected = now;
-      }
-    }
-
-    async function init() {
       try {
-        document.getElementById("status").textContent = "Requesting microphone...";
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const source = audioContext.createMediaStreamSource(stream);
-
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
         analyser = audioContext.createAnalyser();
+        source = audioContext.createMediaStreamSource(stream);
         source.connect(analyser);
 
-        dataArray = new Uint8Array(analyser.fftSize);
-        document.getElementById("status").textContent = "Listening...";
+        analyser.fftSize = 256;
+        const bufferLength = analyser.frequencyBinCount;
+        dataArray = new Uint8Array(bufferLength);
 
         listenLoop();
       } catch (err) {
-        document.getElementById("status").textContent = "Error: " + err.message;
-        console.error(err);
+        statusEl.textContent = "Microphone error: " + err.message;
       }
-    }
+    };
 
     function listenLoop() {
+      requestAnimationFrame(listenLoop);
       analyser.getByteTimeDomainData(dataArray);
+
+      // Calculate average volume
       let sum = 0;
       for (let i = 0; i < dataArray.length; i++) {
-        const value = (dataArray[i] - 128) / 128;
-        sum += value * value;
+        const v = (dataArray[i] - 128) / 128.0;
+        sum += v * v;
       }
-      const rms = Math.sqrt(sum / dataArray.length);
+      const volume = Math.sqrt(sum / dataArray.length);
 
-      // Update volume bar
-      const percent = Math.min(100, rms * 400);
-      document.getElementById("volumeLevel").style.width = percent + "%";
+      // Update bar
+      const percent = Math.min(100, volume * 400); 
+      levelEl.style.width = percent + "%";
 
-      if (rms > settings.sensitivity) {
-        incrementCount();
+      // Threshold detection
+      if (volume > 0.15) { 
+        const now = Date.now();
+        if (now - lastCrowTime > 2000) {  // 2 sec gap between crows
+          crowCount++;
+          countEl.textContent = crowCount;
+          lastCrowTime = now;
+        }
       }
-
-      requestAnimationFrame(listenLoop);
     }
-
-    // Event listeners
-    document.getElementById("startBtn").addEventListener("click", init);
-    document.getElementById("sensitivity").addEventListener("input", e => {
-      settings.sensitivity = parseFloat(e.target.value);
-      document.getElementById("sensitivityVal").textContent = settings.sensitivity;
-    });
-    document.getElementById("saveBtn").addEventListener("click", saveSettings);
-    document.getElementById("resetBtn").addEventListener("click", resetSettings);
-
-    // Init UI
-    applySettingsUI();
-    updateDailyTable();
-    updateHourlyTable();
   </script>
 </body>
 </html>
