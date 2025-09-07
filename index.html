@@ -1,88 +1,115 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Rooster Crow Counter (Adjustable Band + Save)</title>
+  <meta charset="UTF-8" />
+  <title>Rooster Crow Counter — Stats & Charts</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      margin: 20px;
+    :root {
+      --card: #f7f7f9;
+      --border: #e2e2e6;
     }
-    #meter {
-      width: 300px;
-      height: 20px;
-      background: #eee;
-      margin: 10px auto;
-      border: 1px solid #333;
-      position: relative;
+    body { font-family: Arial, sans-serif; margin: 18px; color: #222; }
+    h1 { margin: 0 0 8px 0; }
+    .row { display: flex; flex-wrap: wrap; gap: 16px; align-items: stretch; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      flex: 1 1 320px;
+      min-width: 300px;
+      box-shadow: 0 1px 0 rgba(0,0,0,.03);
     }
-    #level {
-      height: 100%;
-      background: limegreen;
-      width: 0%;
-    }
-    #controls {
-      margin-top: 20px;
-      padding: 10px;
-      border: 1px solid #ddd;
-      background: #f4f4f4;
-      display: inline-block;
-      text-align: left;
-    }
-    #controls p {
-      margin: 8px 0;
-    }
-    #debug {
-      margin-top: 20px;
-      font-size: 14px;
-      text-align: left;
-      max-width: 600px;
-      margin-left: auto;
-      margin-right: auto;
-      background: #f4f4f4;
-      padding: 10px;
-      border: 1px solid #ddd;
-      height: 200px;
-      overflow-y: scroll;
+    #meter { width: 100%; height: 16px; background: #eee; border: 1px solid #333; border-radius: 8px; overflow: hidden; }
+    #level { height: 100%; background: limegreen; width: 0%; transition: width .08s linear; }
+    .controls label { font-size: 13px; display: inline-block; width: 200px; }
+    .controls input[type=range] { width: 220px; vertical-align: middle; }
+    .btn { padding: 8px 12px; border-radius: 8px; border: 1px solid #ccc; background: white; cursor: pointer; }
+    .btn:active { transform: translateY(1px); }
+    .stack { display: grid; gap: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; }
+    th { background: #fafafa; }
+    #debug { height: 180px; overflow-y: auto; background: #fff; border: 1px dashed #bbb; padding: 8px; font-size: 12px; }
+    .muted { color: #666; }
+    @media (min-width: 1000px) {
+      #charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
     }
   </style>
 </head>
 <body>
-  <h1>🐓 Rooster Crow Counter (Adjustable Band + Save)</h1>
-  <button id="startBtn">Start Listening</button>
-  <p>Status: <span id="status">Idle</span></p>
-  <p>Crow Count: <span id="count">0</span></p>
+  <h1>🐓 Rooster Crow Counter — Stats & Charts</h1>
+  <p class="muted">Live detection in a selected frequency band, with saved settings, daily/hourly logs, and charts.</p>
 
-  <!-- Volume meter -->
-  <div id="meter"><div id="level"></div></div>
+  <div class="row">
+    <div class="card">
+      <h3>🎧 Live</h3>
+      <button id="startBtn" class="btn">Start Listening</button>
+      <span style="margin-left:8px">Status: <b id="status">Idle</b></span>
+      <p style="margin:10px 0 6px">Crow Count: <b id="count">0</b></p>
+      <div id="meter" title="Band Energy"><div id="level"></div></div>
+      <div id="debug" style="margin-top:10px"></div>
+    </div>
 
-  <!-- Controls -->
-  <div id="controls">
-    <p>
-      <label>Threshold: <span id="thresholdVal">30</span></label><br>
-      <input type="range" id="threshold" min="1" max="100" value="30">
-    </p>
-    <p>
-      <label>Cooldown (ms): <span id="cooldownVal">2000</span></label><br>
-      <input type="range" id="cooldown" min="500" max="5000" step="100" value="2000">
-    </p>
-    <p>
-      <label>Start Frequency (Hz): <span id="startFreqVal">800</span></label><br>
-      <input type="range" id="startFreq" min="100" max="5000" step="50" value="800">
-    </p>
-    <p>
-      <label>End Frequency (Hz): <span id="endFreqVal">2000</span></label><br>
-      <input type="range" id="endFreq" min="500" max="8000" step="50" value="2000">
-    </p>
-    <button id="resetBtn">Reset Count</button>
-    <button id="saveBtn">💾 Save Settings</button>
+    <div class="card controls">
+      <h3>⚙️ Settings</h3>
+      <div class="stack">
+        <div>
+          <label>Threshold: <span id="thresholdVal">30</span></label>
+          <input type="range" id="threshold" min="1" max="100" value="30">
+        </div>
+        <div>
+          <label>Cooldown (ms): <span id="cooldownVal">2000</span></label>
+          <input type="range" id="cooldown" min="500" max="5000" step="100" value="2000">
+        </div>
+        <div>
+          <label>Start Frequency (Hz): <span id="startFreqVal">800</span></label>
+          <input type="range" id="startFreq" min="100" max="5000" step="50" value="800">
+        </div>
+        <div>
+          <label>End Frequency (Hz): <span id="endFreqVal">2000</span></label>
+          <input type="range" id="endFreq" min="500" max="8000" step="50" value="2000">
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap: wrap;">
+          <button id="resetBtn" class="btn">Reset Count</button>
+          <button id="saveBtn" class="btn">💾 Save Settings</button>
+          <button id="clearLogsBtn" class="btn">🧹 Clear Logs</button>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <!-- Debug log -->
-  <div id="debug"></div>
+  <div class="row">
+    <div class="card" style="flex: 2 1 480px;">
+      <h3>📈 Charts</h3>
+      <div id="charts">
+        <div><canvas id="hourlyChart" height="180"></canvas></div>
+        <div><canvas id="dailyChart" height="180"></canvas></div>
+      </div>
+      <p class="muted" style="margin-top:8px">Left: crows per hour (today). Right: crows per day (last 7 days).</p>
+    </div>
+
+    <div class="card" style="flex: 1 1 320px;">
+      <h3>🧾 Stats Log</h3>
+      <h4>Today (Hourly)</h4>
+      <table id="hourlyTable">
+        <thead><tr><th>Hour</th><th>Crows</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <h4 style="margin-top:10px">Daily Totals</h4>
+      <table id="dailyTable">
+        <thead><tr><th>Date</th><th>Crows</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <script>
+    // ====== Globals ======
     let audioContext, analyser, dataArray, source;
     let isListening = false;
     let crowCount = 0;
@@ -97,41 +124,143 @@
     const levelEl = document.getElementById("level");
     const debugEl = document.getElementById("debug");
 
+    const hourlyTableBody = document.querySelector("#hourlyTable tbody");
+    const dailyTableBody  = document.querySelector("#dailyTable tbody");
+
+    let hourlyChart, dailyChart;
+
+    // ====== Utilities ======
     function log(msg) {
       const time = new Date().toLocaleTimeString();
       debugEl.innerHTML = `[${time}] ${msg}<br>` + debugEl.innerHTML;
     }
 
-    // Load settings from localStorage
+    const dateKey = (d = new Date()) => d.toISOString().slice(0,10); // YYYY-MM-DD
     function loadSettings() {
-      const savedThreshold = localStorage.getItem("threshold");
-      const savedCooldown = localStorage.getItem("cooldown");
-      const savedStart = localStorage.getItem("startFreq");
-      const savedEnd = localStorage.getItem("endFreq");
-
-      if (savedThreshold) {
-        threshold = parseInt(savedThreshold);
-        document.getElementById("threshold").value = threshold;
-        document.getElementById("thresholdVal").textContent = threshold;
-      }
-      if (savedCooldown) {
-        cooldown = parseInt(savedCooldown);
-        document.getElementById("cooldown").value = cooldown;
-        document.getElementById("cooldownVal").textContent = cooldown;
-      }
-      if (savedStart) {
-        startFreq = parseInt(savedStart);
-        document.getElementById("startFreq").value = startFreq;
-        document.getElementById("startFreqVal").textContent = startFreq;
-      }
-      if (savedEnd) {
-        endFreq = parseInt(savedEnd);
-        document.getElementById("endFreq").value = endFreq;
-        document.getElementById("endFreqVal").textContent = endFreq;
-      }
+      try {
+        const s = JSON.parse(localStorage.getItem("crowSettings") || "{}");
+        if (s.threshold != null) threshold = +s.threshold;
+        if (s.cooldown != null) cooldown = +s.cooldown;
+        if (s.startFreq != null) startFreq = +s.startFreq;
+        if (s.endFreq != null) endFreq = +s.endFreq;
+      } catch {}
+      // Reflect to UI
+      document.getElementById("threshold").value = threshold;
+      document.getElementById("thresholdVal").textContent = threshold;
+      document.getElementById("cooldown").value = cooldown;
+      document.getElementById("cooldownVal").textContent = cooldown;
+      document.getElementById("startFreq").value = startFreq;
+      document.getElementById("startFreqVal").textContent = startFreq;
+      document.getElementById("endFreq").value = endFreq;
+      document.getElementById("endFreqVal").textContent = endFreq;
       log("Settings loaded.");
     }
+    function saveSettings() {
+      localStorage.setItem("crowSettings", JSON.stringify({ threshold, cooldown, startFreq, endFreq }));
+      log("Settings saved.");
+    }
 
+    function loadLogs() {
+      try {
+        return JSON.parse(localStorage.getItem("crowLogs") || "{}");
+      } catch {
+        return {};
+      }
+    }
+    function saveLogs(logs) {
+      localStorage.setItem("crowLogs", JSON.stringify(logs));
+    }
+    function ensureToday(logs) {
+      const key = dateKey();
+      if (!logs.daily) logs.daily = {};
+      if (!logs.hourly) logs.hourly = {};
+      if (!logs.daily[key]) logs.daily[key] = 0;
+      if (!logs.hourly[key]) logs.hourly[key] = new Array(24).fill(0);
+      return key;
+    }
+
+    function recordCrow() {
+      const logs = loadLogs();
+      const key = ensureToday(logs);
+      const hour = new Date().getHours();
+      logs.daily[key] += 1;
+      logs.hourly[key][hour] += 1;
+      saveLogs(logs);
+      updateTablesAndCharts(logs);
+    }
+
+    // ====== Tables & Charts ======
+    function renderHourlyTable(logs, key) {
+      const hours = logs.hourly?.[key] || new Array(24).fill(0);
+      hourlyTableBody.innerHTML = "";
+      for (let h = 0; h < 24; h++) {
+        const tr = document.createElement("tr");
+        const label = String(h).padStart(2,"0") + ":00";
+        tr.innerHTML = `<td>${label}</td><td>${hours[h]}</td>`;
+        hourlyTableBody.appendChild(tr);
+      }
+    }
+    function renderDailyTable(logs) {
+      dailyTableBody.innerHTML = "";
+      const entries = Object.entries(logs.daily || {}).sort((a,b) => a[0] < b[0] ? 1 : -1);
+      for (const [d, c] of entries) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${d}</td><td>${c}</td>`;
+        dailyTableBody.appendChild(tr);
+      }
+    }
+
+    function initCharts() {
+      const ctxH = document.getElementById("hourlyChart").getContext("2d");
+      const ctxD = document.getElementById("dailyChart").getContext("2d");
+      hourlyChart = new Chart(ctxH, {
+        type: "bar",
+        data: {
+          labels: Array.from({length: 24}, (_,i)=> String(i).padStart(2,"0")+":00"),
+          datasets: [{ label: "Crows (today)", data: new Array(24).fill(0) }]
+        },
+        options: { responsive: true, animation: false, scales: { y: { beginAtZero: true } } }
+      });
+      dailyChart = new Chart(ctxD, {
+        type: "line",
+        data: {
+          labels: [],
+          datasets: [{ label: "Crows (last 7 days)", data: [] }]
+        },
+        options: { responsive: true, animation: false, scales: { y: { beginAtZero: true } } }
+      });
+    }
+
+    function updateCharts(logs) {
+      // Hourly (today)
+      const key = dateKey();
+      const hours = logs.hourly?.[key] || new Array(24).fill(0);
+      hourlyChart.data.datasets[0].data = hours;
+      hourlyChart.update();
+
+      // Daily (last 7 days)
+      const labels = [];
+      const data = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const k = dateKey(d);
+        labels.push(k);
+        data.push((logs.daily && logs.daily[k]) || 0);
+      }
+      dailyChart.data.labels = labels;
+      dailyChart.data.datasets[0].data = data;
+      dailyChart.update();
+    }
+
+    function updateTablesAndCharts(logs) {
+      const key = dateKey();
+      renderHourlyTable(logs, key);
+      renderDailyTable(logs);
+      updateCharts(logs);
+    }
+
+    // ====== Audio Detection ======
     async function startListening() {
       if (isListening) return;
       try {
@@ -148,7 +277,6 @@
         isListening = true;
         statusEl.textContent = "Listening...";
         log("Microphone access granted. Listening started.");
-
         detectLoop();
       } catch (err) {
         statusEl.textContent = "Error: " + err.message;
@@ -164,69 +292,69 @@
       const nyquist = audioContext.sampleRate / 2;
       const binSize = nyquist / dataArray.length;
 
-      const startBin = Math.floor(startFreq / binSize);
-      const endBin = Math.floor(endFreq / binSize);
+      // Ensure valid band
+      const lo = Math.max(0, Math.min(startFreq, endFreq));
+      const hi = Math.max(0, Math.max(startFreq, endFreq));
+      const startBin = Math.max(0, Math.floor(lo / binSize));
+      const endBin = Math.min(dataArray.length - 1, Math.floor(hi / binSize));
+
+      // Average energy in band
       let sum = 0;
-      for (let i = startBin; i <= endBin; i++) {
-        sum += dataArray[i];
-      }
-      const avgEnergy = sum / (endBin - startBin + 1);
+      let n = 0;
+      for (let i = startBin; i <= endBin; i++) { sum += dataArray[i]; n++; }
+      const avgEnergy = n ? (sum / n) : 0;
 
-      let percent = Math.min(100, avgEnergy);
-      levelEl.style.width = percent + "%";
-
-      log(`Band(${startFreq}-${endFreq}Hz): ${avgEnergy.toFixed(2)}`);
+      // Update meter
+      levelEl.style.width = Math.min(100, avgEnergy) + "%";
 
       const now = Date.now();
       if (avgEnergy > threshold && now - lastDetection > cooldown) {
         crowCount++;
         countEl.textContent = crowCount;
         lastDetection = now;
-        log("CROW DETECTED! Count: " + crowCount);
+        log(`CROW DETECTED! Band ${lo}-${hi} Hz, energy ${avgEnergy.toFixed(1)}`);
+        recordCrow();
       }
 
       requestAnimationFrame(detectLoop);
     }
 
-    // UI Controls
-    document.getElementById("threshold").addEventListener("input", e => {
-      threshold = parseInt(e.target.value);
-      document.getElementById("thresholdVal").textContent = threshold;
-    });
-
-    document.getElementById("cooldown").addEventListener("input", e => {
-      cooldown = parseInt(e.target.value);
-      document.getElementById("cooldownVal").textContent = cooldown;
-    });
-
-    document.getElementById("startFreq").addEventListener("input", e => {
-      startFreq = parseInt(e.target.value);
-      document.getElementById("startFreqVal").textContent = startFreq;
-    });
-
-    document.getElementById("endFreq").addEventListener("input", e => {
-      endFreq = parseInt(e.target.value);
-      document.getElementById("endFreqVal").textContent = endFreq;
-    });
-
+    // ====== Wire up UI ======
+    document.getElementById("startBtn").addEventListener("click", startListening);
     document.getElementById("resetBtn").addEventListener("click", () => {
       crowCount = 0;
       countEl.textContent = crowCount;
-      log("Crow count reset.");
+      log("Crow count (session) reset.");
+    });
+    document.getElementById("saveBtn").addEventListener("click", saveSettings);
+    document.getElementById("clearLogsBtn").addEventListener("click", () => {
+      localStorage.removeItem("crowLogs");
+      log("Logs cleared.");
+      updateTablesAndCharts(loadLogs());
     });
 
-    document.getElementById("saveBtn").addEventListener("click", () => {
-      localStorage.setItem("threshold", threshold);
-      localStorage.setItem("cooldown", cooldown);
-      localStorage.setItem("startFreq", startFreq);
-      localStorage.setItem("endFreq", endFreq);
-      log("Settings saved.");
+    // Sliders
+    document.getElementById("threshold").addEventListener("input", e => {
+      threshold = +e.target.value;
+      document.getElementById("thresholdVal").textContent = threshold;
+    });
+    document.getElementById("cooldown").addEventListener("input", e => {
+      cooldown = +e.target.value;
+      document.getElementById("cooldownVal").textContent = cooldown;
+    });
+    document.getElementById("startFreq").addEventListener("input", e => {
+      startFreq = +e.target.value;
+      document.getElementById("startFreqVal").textContent = startFreq;
+    });
+    document.getElementById("endFreq").addEventListener("input", e => {
+      endFreq = +e.target.value;
+      document.getElementById("endFreqVal").textContent = endFreq;
     });
 
-    document.getElementById("startBtn").addEventListener("click", startListening);
-
-    // Load settings on page load
+    // ====== Init ======
     loadSettings();
+    initCharts();
+    updateTablesAndCharts(loadLogs());
   </script>
 </body>
 </html>
