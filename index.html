@@ -2,134 +2,32 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>🐓 Rooster Crow Counter</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Microphone Test</title>
   <style>
-    body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
-    h1 { font-size: 2em; }
-    #count { font-size: 2em; color: green; }
-    button { padding: 10px 20px; margin: 10px; cursor: pointer; }
-    table { margin: 20px auto; border-collapse: collapse; width: 60%; }
-    th, td { border: 1px solid #ccc; padding: 8px; }
-    th { background: #f4f4f4; }
-    #volumeBarContainer {
-      width: 60%; margin: 20px auto; height: 20px; background: #eee; border-radius: 10px;
-    }
-    #volumeBar {
-      height: 100%; width: 0%; background: green; border-radius: 10px;
-      transition: width 0.1s linear;
-    }
-    #oscilloscope {
-      margin: 20px auto;
-      display: block;
-      border: 1px solid #ccc;
-      background: black;
-    }
+    body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+    #status { font-size: 1.2em; margin-top: 20px; color: darkblue; }
+    #error { color: red; margin-top: 20px; }
   </style>
 </head>
 <body>
-  <h1>🐓 Rooster Crow Counter</h1>
-  <p>Status: <span id="status">Click Start to begin...</span></p>
-  <p>Crow Count: <span id="count">0</span></p>
-
-  <!-- Volume Bar -->
-  <div id="volumeBarContainer">
-    <div id="volumeBar"></div>
-  </div>
-
-  <!-- Oscilloscope -->
-  <canvas id="oscilloscope" width="600" height="150"></canvas>
-
-  <button id="startBtn">🎤 Start Listening</button>
+  <h1>Microphone Permission Test</h1>
+  <p id="status">Requesting microphone access...</p>
+  <p id="error"></p>
 
   <script>
-    let count = 0;
-    let listening = false;
-    let audioContext, analyser, dataArray;
-    let canvas, ctx;
-
-    async function init() {
+    async function testMic() {
       try {
-        document.getElementById("status").textContent = "Requesting microphone...";
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const source = audioContext.createMediaStreamSource(stream);
-
-        analyser = audioContext.createAnalyser();
-        analyser.fftSize = 1024;
-        source.connect(analyser);
-
-        dataArray = new Uint8Array(analyser.fftSize);
-
-        canvas = document.getElementById("oscilloscope");
-        ctx = canvas.getContext("2d");
-
-        listening = true;
-        document.getElementById("status").textContent = "Listening for rooster crows...";
-
-        listenLoop();
+        document.getElementById("status").textContent = "✅ Microphone access granted!";
+        console.log("Microphone stream:", stream);
       } catch (err) {
-        document.getElementById("status").textContent = "Error: " + err.message;
-        console.error(err);
+        document.getElementById("status").textContent = "❌ Microphone access denied.";
+        document.getElementById("error").textContent = err.message;
+        console.error("Microphone error:", err);
       }
     }
-
-    function listenLoop() {
-      if (!listening) return;
-
-      analyser.getByteTimeDomainData(dataArray);
-
-      // Calculate RMS (volume level)
-      let sum = 0;
-      for (let i = 0; i < dataArray.length; i++) {
-        const value = (dataArray[i] - 128) / 128;
-        sum += value * value;
-      }
-      const rms = Math.sqrt(sum / dataArray.length);
-
-      // Update volume bar
-      const level = Math.min(1, rms * 5);
-      document.getElementById("volumeBar").style.width = (level * 100) + "%";
-
-      // Log live RMS
-      console.log("Mic level:", rms.toFixed(4));
-
-      // Detection threshold
-      if (rms > 0.05) {
-        count++;
-        document.getElementById("count").textContent = count;
-        console.log("Rooster crow detected! Count:", count);
-        document.getElementById("status").textContent = "Crow detected!";
-        setTimeout(() => {
-          document.getElementById("status").textContent = "Listening for rooster crows...";
-        }, 1000);
-      }
-
-      // Draw oscilloscope waveform
-      ctx.fillStyle = "black";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = "lime";
-      ctx.beginPath();
-
-      let sliceWidth = canvas.width / dataArray.length;
-      let x = 0;
-      for (let i = 0; i < dataArray.length; i++) {
-        const v = dataArray[i] / 128.0;
-        const y = v * canvas.height / 2;
-        if (i === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
-        }
-        x += sliceWidth;
-      }
-      ctx.lineTo(canvas.width, canvas.height / 2);
-      ctx.stroke();
-
-      requestAnimationFrame(listenLoop);
-    }
-
-    document.getElementById("startBtn").addEventListener("click", init);
+    testMic();
   </script>
 </body>
 </html>
