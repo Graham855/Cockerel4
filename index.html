@@ -2,282 +2,58 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>🐓 Rooster Crow Counter with Settings & Stats</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <title>Rooster Crow Counter (Sound Test)</title>
   <style>
-    body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
-    h1 { font-size: 2em; }
-    #count { font-size: 2em; color: green; }
-    button { padding: 10px 20px; margin: 10px; cursor: pointer; }
-    table { margin: 20px auto; border-collapse: collapse; width: 70%; }
-    th, td { border: 1px solid #ccc; padding: 8px; }
-    th { background: #f4f4f4; }
-    canvas { max-width: 700px; margin: 30px auto; display: block; }
-    .settings { border: 1px solid #ccc; padding: 15px; margin: 20px auto; width: 70%; text-align: left; background: #fafafa; }
-    .settings h2 { text-align: center; }
-    .setting { margin: 10px 0; }
-    label { display: block; margin-bottom: 5px; }
-    input[type=range] { width: 100%; }
+    body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+    #status { margin-top: 20px; font-weight: bold; }
+    #volumeBar { width: 300px; height: 30px; background: #ddd; margin: 20px auto; position: relative; }
+    #volumeLevel { height: 100%; background: green; width: 0%; }
   </style>
 </head>
 <body>
-  <h1>🐓 Rooster Crow Counter</h1>
-  <p>Status: <span id="status">Click Start to begin...</span></p>
-  <p>Crow Count: <span id="count">0</span></p>
-  <button id="startBtn">🎤 Start Listening</button>
+  <h1>🐓 Rooster Crow Counter (Sound Test)</h1>
+  <button id="startBtn">🎙 Start Listening</button>
+  <div id="status">Status: Waiting...</div>
 
-  <!-- Settings Panel -->
-  <div class="settings">
-    <h2>⚙️ Detection Settings</h2>
-    <div class="setting">
-      <label for="sensitivity">Sensitivity (Volume Threshold): <span id="sensitivityVal">0.2</span></label>
-      <input type="range" id="sensitivity" min="0" max="1" step="0.01" value="0.2">
-    </div>
-    <div class="setting">
-      <label for="minFreq">Min Frequency (Hz): <span id="minFreqVal">500</span></label>
-      <input type="range" id="minFreq" min="100" max="2000" step="10" value="500">
-    </div>
-    <div class="setting">
-      <label for="maxFreq">Max Frequency (Hz): <span id="maxFreqVal">1500</span></label>
-      <input type="range" id="maxFreq" min="1000" max="5000" step="10" value="1500">
-    </div>
-    <div class="setting">
-      <label for="minDuration">Min Duration (seconds): <span id="minDurationVal">0.5</span></label>
-      <input type="range" id="minDuration" min="0.1" max="2.0" step="0.1" value="0.5">
-    </div>
-    <button id="saveBtn">💾 Save Settings</button>
-    <button id="resetBtn">🔄 Reset Defaults</button>
-  </div>
-
-  <!-- Logs -->
-  <h2>📊 Daily Log</h2>
-  <table>
-    <thead><tr><th>Date</th><th>Count</th></tr></thead>
-    <tbody id="logTable"></tbody>
-  </table>
-
-  <h2>🕒 Hourly Log (Today)</h2>
-  <table>
-    <thead><tr><th>Hour</th><th>Count</th></tr></thead>
-    <tbody id="hourlyTable"></tbody>
-  </table>
-
-  <button id="downloadBtn">⬇️ Download Log (CSV)</button>
-
-  <!-- Charts -->
-  <h2>📈 Crow Activity by Day</h2>
-  <canvas id="crowChart"></canvas>
-
-  <h2>🕒 Crow Activity by Hour</h2>
-  <canvas id="hourChart"></canvas>
+  <div id="volumeBar"><div id="volumeLevel"></div></div>
 
   <script>
-    let count = 0;
-    let listening = false;
-    let audioContext, analyser, dataArray;
-    let startTime = null;
+    const startBtn = document.getElementById("startBtn");
+    const statusDiv = document.getElementById("status");
+    const volumeLevel = document.getElementById("volumeLevel");
 
-    // Default settings
-    const defaultSettings = { sensitivity: 0.2, minFreq: 500, maxFreq: 1500, minDuration: 0.5 };
-    let settings = JSON.parse(localStorage.getItem("crowSettings")) || defaultSettings;
-
-    // Logs
-    let logs = JSON.parse(localStorage.getItem("crowLogs")) || {};
-    let hourlyLogs = JSON.parse(localStorage.getItem("hourlyLogs")) || {};
-
-    // Charts
-    const ctxDay = document.getElementById("crowChart").getContext("2d");
-    let chartDay = new Chart(ctxDay, {
-      type: "line",
-      data: { labels: Object.keys(logs), datasets: [{
-        label: "Crows per Day",
-        data: Object.values(logs),
-        borderColor: "green",
-        backgroundColor: "rgba(0,128,0,0.2)",
-        fill: true,
-        tension: 0.3
-      }]},
-      options: { responsive: true, scales: { y: { beginAtZero: true } } }
-    });
-
-    const ctxHour = document.getElementById("hourChart").getContext("2d");
-    let chartHour = new Chart(ctxHour, {
-      type: "bar",
-      data: { labels: Array.from({length:24},(_,i)=>i+":00"), datasets: [{
-        label: "Crows per Hour",
-        data: Array(24).fill(0),
-        backgroundColor: "rgba(255,165,0,0.6)",
-        borderColor: "orange",
-        borderWidth: 1
-      }]},
-      options: { responsive: true, scales: { y: { beginAtZero: true } } }
-    });
-
-    function updateDailyTable() {
-      const tbody = document.getElementById("logTable");
-      tbody.innerHTML = "";
-      Object.keys(logs).forEach(date => {
-        tbody.innerHTML += `<tr><td>${date}</td><td>${logs[date]}</td></tr>`;
-      });
-    }
-
-    function updateHourlyTable() {
-      const tbody = document.getElementById("hourlyTable");
-      tbody.innerHTML = "";
-      const today = new Date().toISOString().split("T")[0];
-      const todayHours = hourlyLogs[today] || Array(24).fill(0);
-      todayHours.forEach((val, hour) => {
-        tbody.innerHTML += `<tr><td>${hour}:00</td><td>${val}</td></tr>`;
-      });
-    }
-
-    function updateCharts() {
-      chartDay.data.labels = Object.keys(logs);
-      chartDay.data.datasets[0].data = Object.values(logs);
-      chartDay.update();
-
-      const today = new Date().toISOString().split("T")[0];
-      const todayHours = hourlyLogs[today] || Array(24).fill(0);
-      chartHour.data.datasets[0].data = todayHours;
-      chartHour.update();
-    }
-
-    function saveLogs() {
-      localStorage.setItem("crowLogs", JSON.stringify(logs));
-      localStorage.setItem("hourlyLogs", JSON.stringify(hourlyLogs));
-      updateDailyTable();
-      updateHourlyTable();
-      updateCharts();
-    }
-
-    function incrementCount() {
-      count++;
-      document.getElementById("count").textContent = count;
-      const today = new Date().toISOString().split("T")[0];
-      const hour = new Date().getHours();
-      logs[today] = (logs[today] || 0) + 1;
-      if (!hourlyLogs[today]) hourlyLogs[today] = Array(24).fill(0);
-      hourlyLogs[today][hour]++;
-      saveLogs();
-    }
-
-    async function init() {
+    startBtn.addEventListener("click", async () => {
       try {
-        document.getElementById("status").textContent = "Requesting microphone...";
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        statusDiv.innerText = "Requesting microphone...";
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const source = audioContext.createMediaStreamSource(stream);
 
-        analyser = audioContext.createAnalyser();
-        analyser.fftSize = 2048;
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
         source.connect(analyser);
 
-        dataArray = new Uint8Array(analyser.frequencyBinCount);
-        listening = true;
-        document.getElementById("status").textContent = "Listening for rooster crows...";
-        detectCrow();
-      } catch (err) {
-        document.getElementById("status").textContent = "Error: " + err.message;
-        console.error(err);
-      }
-    }
+        const dataArray = new Uint8Array(analyser.fftSize);
+        statusDiv.innerText = "Listening...";
 
-    function detectCrow() {
-      if (!listening) return;
-      analyser.getByteFrequencyData(dataArray);
-
-      const sampleRate = audioContext.sampleRate;
-      const nyquist = sampleRate / 2;
-      const lowIndex = Math.floor(settings.minFreq / nyquist * dataArray.length);
-      const highIndex = Math.floor(settings.maxFreq / nyquist * dataArray.length);
-
-      let sum = 0;
-      for (let i = lowIndex; i <= highIndex; i++) sum += dataArray[i];
-      const avg = sum / (highIndex - lowIndex + 1);
-      const normalized = avg / 255;
-
-      if (normalized > settings.sensitivity) {
-        if (!startTime) startTime = Date.now();
-        const elapsed = (Date.now() - startTime) / 1000;
-        if (elapsed >= settings.minDuration) {
-          incrementCount();
-          startTime = null;
+        function updateVolume() {
+          analyser.getByteTimeDomainData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) {
+            const value = (dataArray[i] - 128) / 128;
+            sum += value * value;
+          }
+          const rms = Math.sqrt(sum / dataArray.length);
+          const percent = Math.min(100, rms * 400);
+          volumeLevel.style.width = percent + "%";
+          requestAnimationFrame(updateVolume);
         }
-      } else {
-        startTime = null;
+
+        updateVolume();
+      } catch (err) {
+        console.error(err);
+        statusDiv.innerText = "Error: " + err.message;
       }
-      requestAnimationFrame(detectCrow);
-    }
-
-    // Settings UI
-    function applySettingsUI() {
-      document.getElementById("sensitivity").value = settings.sensitivity;
-      document.getElementById("sensitivityVal").textContent = settings.sensitivity;
-      document.getElementById("minFreq").value = settings.minFreq;
-      document.getElementById("minFreqVal").textContent = settings.minFreq;
-      document.getElementById("maxFreq").value = settings.maxFreq;
-      document.getElementById("maxFreqVal").textContent = settings.maxFreq;
-      document.getElementById("minDuration").value = settings.minDuration;
-      document.getElementById("minDurationVal").textContent = settings.minDuration;
-    }
-
-    function saveSettings() {
-      localStorage.setItem("crowSettings", JSON.stringify(settings));
-      alert("Settings saved!");
-    }
-
-    function resetSettings() {
-      settings = { ...defaultSettings };
-      saveSettings();
-      applySettingsUI();
-    }
-
-    // Event listeners
-    document.getElementById("startBtn").addEventListener("click", init);
-    document.getElementById("sensitivity").addEventListener("input", e => {
-      settings.sensitivity = parseFloat(e.target.value);
-      document.getElementById("sensitivityVal").textContent = settings.sensitivity;
     });
-    document.getElementById("minFreq").addEventListener("input", e => {
-      settings.minFreq = parseInt(e.target.value);
-      document.getElementById("minFreqVal").textContent = settings.minFreq;
-    });
-    document.getElementById("maxFreq").addEventListener("input", e => {
-      settings.maxFreq = parseInt(e.target.value);
-      document.getElementById("maxFreqVal").textContent = settings.maxFreq;
-    });
-    document.getElementById("minDuration").addEventListener("input", e => {
-      settings.minDuration = parseFloat(e.target.value);
-      document.getElementById("minDurationVal").textContent = settings.minDuration;
-    });
-    document.getElementById("saveBtn").addEventListener("click", saveSettings);
-    document.getElementById("resetBtn").addEventListener("click", resetSettings);
-
-    // CSV export
-    document.getElementById("downloadBtn").addEventListener("click", () => {
-      let csv = "Date,Total,Hour,Hour Count\n";
-      Object.keys(logs).forEach(date => {
-        const total = logs[date];
-        const hours = hourlyLogs[date] || Array(24).fill(0);
-        csv += `${date},${total},,\n`;
-        hours.forEach((val, hour) => {
-          if (val > 0) csv += `${date},,${hour}:00,${val}\n`;
-        });
-      });
-      const blob = new Blob([csv], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "crow_log_detailed.csv";
-      a.click();
-      URL.revokeObjectURL(url);
-    });
-
-    // Init on load
-    applySettingsUI();
-    updateDailyTable();
-    updateHourlyTable();
-    updateCharts();
   </script>
 </body>
 </html>
