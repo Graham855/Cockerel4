@@ -2,64 +2,129 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>🐓 Rooster Crow Counter (Sound Test)</title>
+  <title>Rooster Crow Counter (Sound Test)</title>
   <style>
-    body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
-    h1 { font-size: 28px; }
-    #count { font-size: 28px; color: green; font-weight: bold; }
-    button { margin: 15px; padding: 10px 20px; font-size: 16px; cursor: pointer; }
-    #status { margin-top: 20px; font-size: 18px; }
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin-top: 40px;
+    }
+    h1 {
+      color: #222;
+    }
+    #status {
+      font-weight: bold;
+      margin: 15px 0;
+    }
+    #count {
+      font-size: 1.5em;
+      color: green;
+      margin: 10px 0;
+    }
+    #settings {
+      margin-top: 30px;
+      border: 2px solid #ccc;
+      padding: 15px;
+      width: 320px;
+      margin-left: auto;
+      margin-right: auto;
+      border-radius: 8px;
+      background: #f9f9f9;
+    }
+    #settings h2 {
+      margin-top: 0;
+      font-size: 1.2em;
+    }
+    .setting {
+      margin: 10px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    input[type="number"] {
+      width: 80px;
+      padding: 4px;
+    }
   </style>
 </head>
 <body>
   <h1>🐓 Rooster Crow Counter (Sound Test)</h1>
-  <button onclick="startListening()">🎤 Start Listening</button>
-  <div id="status">Not listening...</div>
-  <div>Crow Count: <span id="count">0</span></div>
+  <button id="startBtn">🎤 Start Listening</button>
+  <div id="status">Idle</div>
+  <div id="count">Crow Count: 0</div>
+
+  <div id="settings">
+    <h2>⚙️ Settings</h2>
+    <div class="setting">
+      <label for="threshold">Volume Threshold:</label>
+      <input type="number" id="threshold" value="30" min="1" max="100">
+    </div>
+    <div class="setting">
+      <label for="cooldown">Cooldown (ms):</label>
+      <input type="number" id="cooldown" value="3000" min="100" step="100">
+    </div>
+  </div>
 
   <script>
-    let crowCount = 0;
+    let count = 0;
     let isListening = false;
-    let lastCrowTime = 0;
-    const cooldown = 3000; // 3 seconds between valid crows
+    let audioContext, analyser, dataArray, source;
+    let lastDetected = 0;
 
-    async function startListening() {
-      const statusEl = document.getElementById("status");
-      const countEl = document.getElementById("count");
+    let volumeThreshold = 30;
+    let cooldownTime = 3000;
+
+    const statusEl = document.getElementById('status');
+    const countEl = document.getElementById('count');
+    const startBtn = document.getElementById('startBtn');
+
+    // Update settings live
+    document.getElementById('threshold').addEventListener('input', e => {
+      volumeThreshold = parseInt(e.target.value, 10);
+    });
+    document.getElementById('cooldown').addEventListener('input', e => {
+      cooldownTime = parseInt(e.target.value, 10);
+    });
+
+    startBtn.addEventListener('click', async () => {
+      if (isListening) return;
+      isListening = true;
+      statusEl.textContent = "Listening...";
 
       try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const analyser = audioContext.createAnalyser();
-        const microphone = audioContext.createMediaStreamSource(stream);
-        microphone.connect(analyser);
+        source = audioContext.createMediaStreamSource(stream);
 
+        analyser = audioContext.createAnalyser();
         analyser.fftSize = 256;
-        const dataArray = new Uint8Array(analyser.fftSize);
-        isListening = true;
-        statusEl.textContent = "Listening...";
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
 
-        function detect() {
-          analyser.getByteFrequencyData(dataArray);
-          const volume = dataArray.reduce((a, b) => a + b) / dataArray.length;
+        source.connect(analyser);
 
-          if (volume > 35) {
-            const now = Date.now();
-            if (now - lastCrowTime > cooldown) {
-              crowCount++;
-              lastCrowTime = now;
-              statusEl.textContent = "Crow detected!";
-              countEl.textContent = crowCount;
-            }
-          }
-
-          if (isListening) requestAnimationFrame(detect);
-        }
-
-        detect();
+        detectSound();
       } catch (err) {
-        console.error("Microphone error:", err);
-        statusEl.textContent = "Microphone access denied.";
+        statusEl.textContent = "Microphone error: " + err.message;
+      }
+    });
+
+    function detectSound() {
+      requestAnimationFrame(detectSound);
+      analyser.getByteFrequencyData(dataArray);
+      let values = 0;
+      for (let i = 0; i < dataArray.length; i++) {
+        values += dataArray[i];
+      }
+      let average = values / dataArray.length;
+
+      if (average > volumeThreshold) {
+        let now = Date.now();
+        if (now - lastDetected > cooldownTime) {
+          count++;
+          countEl.textContent = "Crow Count: " + count;
+          statusEl.textContent = "Crow detected!";
+          lastDetected = now;
+        }
       }
     }
   </script>
