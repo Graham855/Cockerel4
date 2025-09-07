@@ -3,14 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>🐓 Rooster Crow Counter</title>
+  <title>🐓 Rooster Crow Counter with Daily Log</title>
   <style>
-    body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+    body { font-family: Arial, sans-serif; text-align: center; margin-top: 20px; }
     h1 { font-size: 2rem; }
     #count { font-size: 2rem; color: green; }
-    button { font-size: 1.2rem; padding: 10px 20px; margin-top: 20px; }
+    #stats { margin-top: 20px; text-align: left; display: inline-block; }
+    canvas { margin-top: 20px; max-width: 400px; }
     #error { color: red; }
+    table { margin: 20px auto; border-collapse: collapse; }
+    th, td { border: 1px solid #ccc; padding: 8px 12px; }
+    th { background: #f4f4f4; }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
   <h1>🐓 Rooster Crow Counter</h1>
@@ -19,10 +24,57 @@
   <button id="startBtn">🎤 Start Listening</button>
   <p id="error"></p>
 
+  <div id="stats">
+    <h3>📊 Statistics</h3>
+    <p>Total Crows: <span id="totalCrows">0</span></p>
+    <p>Crows per Minute: <span id="crowsPerMinute">0</span></p>
+  </div>
+
+  <canvas id="crowChart"></canvas>
+
+  <h3>📅 Daily Log</h3>
+  <table id="dailyLog">
+    <thead>
+      <tr><th>Date</th><th>Crows</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
   <script>
     let audioContext, analyser, microphone, dataArray;
     let crowCount = 0;
     let lastDetectedTime = 0;
+    let startTime;
+    let chart, chartData;
+
+    function getToday() {
+      return new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+    }
+
+    function loadLog() {
+      return JSON.parse(localStorage.getItem("crowLog") || "{}");
+    }
+
+    function saveLog(log) {
+      localStorage.setItem("crowLog", JSON.stringify(log));
+    }
+
+    function updateLog() {
+      const log = loadLog();
+      const today = getToday();
+      log[today] = crowCount;
+      saveLog(log);
+      renderLog(log);
+    }
+
+    function renderLog(log) {
+      const tbody = document.querySelector("#dailyLog tbody");
+      tbody.innerHTML = "";
+      for (const date in log) {
+        const row = `<tr><td>${date}</td><td>${log[date]}</td></tr>`;
+        tbody.innerHTML += row;
+      }
+    }
 
     async function startListening() {
       try {
@@ -37,7 +89,9 @@
         microphone.connect(analyser);
 
         document.getElementById("status").textContent = "Listening for rooster crows...";
+        startTime = Date.now();
 
+        setupChart();
         detectCrow();
       } catch (err) {
         document.getElementById("status").textContent = "Error";
@@ -50,7 +104,6 @@
       requestAnimationFrame(detectCrow);
       analyser.getByteFrequencyData(dataArray);
 
-      // Calculate energy in rooster frequency band (400–1500 Hz)
       const sampleRate = audioContext.sampleRate;
       const nyquist = sampleRate / 2;
       const lowIndex = Math.floor(400 / nyquist * dataArray.length);
@@ -62,20 +115,58 @@
       }
       const avg = sum / (highIndex - lowIndex + 1);
 
-      // Debug in console
-      // console.log("Band energy:", avg);
-
-      // If loud enough in that band → rooster
-      if (avg > 80) {  // 🔹 Threshold (adjust if needed)
+      if (avg > 80) { // threshold
         const now = Date.now();
         if (now - lastDetectedTime > 2000) {
           crowCount++;
           lastDetectedTime = now;
           document.getElementById("count").textContent = crowCount;
-          console.log("Rooster crow detected! Count:", crowCount);
+          updateStats();
+          updateLog();
         }
       }
     }
+
+    function updateStats() {
+      document.getElementById("totalCrows").textContent = crowCount;
+      const elapsedMinutes = (Date.now() - startTime) / 60000;
+      const rate = (crowCount / elapsedMinutes).toFixed(2);
+      document.getElementById("crowsPerMinute").textContent = rate;
+
+      chartData.labels.push(new Date().toLocaleTimeString());
+      chartData.datasets[0].data.push(crowCount);
+      chart.update();
+    }
+
+    function setupChart() {
+      const ctx = document.getElementById("crowChart").getContext("2d");
+      chartData = {
+        labels: [],
+        datasets: [{
+          label: "Crows Detected",
+          data: [],
+          borderColor: "green",
+          fill: false
+        }]
+      };
+      chart = new Chart(ctx, {
+        type: "line",
+        data: chartData,
+        options: { scales: { y: { beginAtZero: true } } }
+      });
+    }
+
+    // Load existing log on page load
+    window.addEventListener("load", () => {
+      const log = loadLog();
+      renderLog(log);
+      const today = getToday();
+      if (log[today]) {
+        crowCount = log[today];
+        document.getElementById("count").textContent = crowCount;
+        document.getElementById("totalCrows").textContent = crowCount;
+      }
+    });
 
     document.getElementById("startBtn").addEventListener("click", startListening);
   </script>
