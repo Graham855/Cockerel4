@@ -1,95 +1,194 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Rooster Crow Counter (Simple)</title>
+  <meta charset="UTF-8">
+  <title>Rooster Crow Counter (With Save)</title>
   <style>
-    body { font-family: Arial, sans-serif; text-align: center; margin-top: 40px; }
-    h1 { color: #222; }
-    #count { font-size: 2em; color: green; }
-    .settings { margin-top: 20px; padding: 10px; border: 1px solid #ccc; display: inline-block; text-align: left; }
-    label { display: block; margin-top: 8px; }
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 20px;
+    }
+    #meter {
+      width: 300px;
+      height: 20px;
+      background: #eee;
+      margin: 10px auto;
+      border: 1px solid #333;
+      position: relative;
+    }
+    #level {
+      height: 100%;
+      background: limegreen;
+      width: 0%;
+    }
+    #controls {
+      margin-top: 20px;
+      padding: 10px;
+      border: 1px solid #ddd;
+      background: #f4f4f4;
+      display: inline-block;
+      text-align: left;
+    }
+    #debug {
+      margin-top: 20px;
+      font-size: 14px;
+      text-align: left;
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+      background: #f4f4f4;
+      padding: 10px;
+      border: 1px solid #ddd;
+      height: 200px;
+      overflow-y: scroll;
+    }
   </style>
 </head>
 <body>
   <h1>🐓 Rooster Crow Counter</h1>
-  <button id="startBtn">🎤 Start Listening</button>
-  <p id="status">Idle...</p>
+  <button id="startBtn">Start Listening</button>
+  <p>Status: <span id="status">Idle</span></p>
   <p>Crow Count: <span id="count">0</span></p>
 
-  <div class="settings">
-    <h3>⚙️ Settings</h3>
-    <label>Volume Threshold: <span id="threshVal">50</span>
-      <input type="range" id="threshold" min="10" max="100" value="50">
-    </label>
-    <label>Cooldown (ms): <span id="coolVal">2000</span>
-      <input type="range" id="cooldown" min="500" max="5000" step="100" value="2000">
-    </label>
+  <!-- Volume meter -->
+  <div id="meter"><div id="level"></div></div>
+
+  <!-- Controls -->
+  <div id="controls">
+    <p>
+      <label>Volume Threshold: <span id="thresholdVal">20</span></label><br>
+      <input type="range" id="threshold" min="1" max="100" value="20">
+    </p>
+    <p>
+      <label>Cooldown (ms): <span id="cooldownVal">1000</span></label><br>
+      <input type="range" id="cooldown" min="100" max="5000" step="100" value="1000">
+    </p>
     <button id="resetBtn">Reset Count</button>
+    <button id="saveBtn">💾 Save Settings</button>
   </div>
 
+  <!-- Debug log -->
+  <div id="debug"></div>
+
   <script>
-    let count = 0;
-    let listening = false;
-    let lastTime = 0;
-    let threshold = 50;
-    let cooldown = 2000;
+    let audioContext, analyser, dataArray, source;
+    let isListening = false;
+    let crowCount = 0;
+    let cooldown = 1000; 
+    let volumeThreshold = 20; 
+    let lastDetection = 0;
 
-    const statusEl = document.getElementById('status');
-    const countEl = document.getElementById('count');
-    const threshEl = document.getElementById('threshold');
-    const coolEl = document.getElementById('cooldown');
+    const startBtn = document.getElementById("startBtn");
+    const statusEl = document.getElementById("status");
+    const countEl = document.getElementById("count");
+    const levelEl = document.getElementById("level");
+    const debugEl = document.getElementById("debug");
+    const thresholdSlider = document.getElementById("threshold");
+    const cooldownSlider = document.getElementById("cooldown");
+    const thresholdVal = document.getElementById("thresholdVal");
+    const cooldownVal = document.getElementById("cooldownVal");
+    const resetBtn = document.getElementById("resetBtn");
+    const saveBtn = document.getElementById("saveBtn");
 
-    threshEl.addEventListener('input', () => {
-      threshold = parseInt(threshEl.value);
-      document.getElementById('threshVal').innerText = threshold;
-    });
+    function log(msg) {
+      const time = new Date().toLocaleTimeString();
+      debugEl.innerHTML = `[${time}] ${msg}<br>` + debugEl.innerHTML;
+    }
 
-    coolEl.addEventListener('input', () => {
-      cooldown = parseInt(coolEl.value);
-      document.getElementById('coolVal').innerText = cooldown;
-    });
+    // Load saved settings
+    function loadSettings() {
+      const savedThreshold = localStorage.getItem("threshold");
+      const savedCooldown = localStorage.getItem("cooldown");
+      if (savedThreshold) {
+        volumeThreshold = parseInt(savedThreshold);
+        thresholdSlider.value = volumeThreshold;
+        thresholdVal.textContent = volumeThreshold;
+      }
+      if (savedCooldown) {
+        cooldown = parseInt(savedCooldown);
+        cooldownSlider.value = cooldown;
+        cooldownVal.textContent = cooldown;
+      }
+      log("Settings loaded.");
+    }
 
-    document.getElementById('resetBtn').onclick = () => {
-      count = 0;
-      countEl.innerText = count;
-    };
-
-    document.getElementById('startBtn').onclick = async () => {
-      if (listening) return;
-      listening = true;
-      statusEl.innerText = "Listening...";
-
+    async function startListening() {
+      if (isListening) return;
       try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const source = audioCtx.createMediaStreamSource(stream);
-        const analyser = audioCtx.createAnalyser();
-        const dataArray = new Uint8Array(analyser.fftSize);
+        source = audioContext.createMediaStreamSource(stream);
+
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 1024;
+        const bufferLength = analyser.fftSize;
+        dataArray = new Float32Array(bufferLength);
 
         source.connect(analyser);
 
-        function check() {
-          analyser.getByteTimeDomainData(dataArray);
-          let sum = 0;
-          for (let i = 0; i < dataArray.length; i++) {
-            let v = (dataArray[i] - 128) / 128;
-            sum += v * v;
-          }
-          let rms = Math.sqrt(sum / dataArray.length) * 100;
-          let now = Date.now();
-          if (rms > threshold && (now - lastTime) > cooldown) {
-            count++;
-            countEl.innerText = count;
-            lastTime = now;
-          }
-          requestAnimationFrame(check);
-        }
-        check();
+        isListening = true;
+        statusEl.textContent = "Listening...";
+        log("Microphone access granted. Listening started.");
+
+        detectLoop();
       } catch (err) {
-        statusEl.innerText = "Microphone error: " + err;
+        statusEl.textContent = "Error: " + err.message;
+        log("Error accessing microphone: " + err.message);
       }
-    };
+    }
+
+    function detectLoop() {
+      if (!isListening) return;
+
+      analyser.getFloatTimeDomainData(dataArray);
+
+      // Calculate RMS volume
+      let sumSquares = 0;
+      for (let i = 0; i < dataArray.length; i++) {
+        sumSquares += dataArray[i] * dataArray[i];
+      }
+      let rms = Math.sqrt(sumSquares / dataArray.length) * 1000;
+      let percent = Math.min(100, rms);
+      levelEl.style.width = percent + "%";
+
+      if (rms > volumeThreshold && Date.now() - lastDetection > cooldown) {
+        crowCount++;
+        countEl.textContent = crowCount;
+        lastDetection = Date.now();
+        log("CROW DETECTED! Count: " + crowCount);
+      }
+
+      requestAnimationFrame(detectLoop);
+    }
+
+    // Sliders
+    thresholdSlider.addEventListener("input", () => {
+      volumeThreshold = parseInt(thresholdSlider.value);
+      thresholdVal.textContent = volumeThreshold;
+    });
+
+    cooldownSlider.addEventListener("input", () => {
+      cooldown = parseInt(cooldownSlider.value);
+      cooldownVal.textContent = cooldown;
+    });
+
+    resetBtn.addEventListener("click", () => {
+      crowCount = 0;
+      countEl.textContent = crowCount;
+      log("Crow count reset.");
+    });
+
+    saveBtn.addEventListener("click", () => {
+      localStorage.setItem("threshold", volumeThreshold);
+      localStorage.setItem("cooldown", cooldown);
+      log("Settings saved: Threshold " + volumeThreshold + ", Cooldown " + cooldown + "ms");
+    });
+
+    startBtn.addEventListener("click", startListening);
+
+    // Load settings when page loads
+    loadSettings();
   </script>
 </body>
 </html>
