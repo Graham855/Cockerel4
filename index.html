@@ -2,66 +2,64 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>🐓 Rooster Crow Counter (Sound Test)</title>
   <style>
     body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
-    h1 { color: #222; }
-    button { padding: 10px 20px; font-size: 16px; margin: 10px; cursor: pointer; }
-    #count { font-size: 24px; font-weight: bold; color: green; }
-    #status { font-size: 18px; margin-top: 10px; }
+    h1 { font-size: 28px; }
+    #count { font-size: 28px; color: green; font-weight: bold; }
+    button { margin: 15px; padding: 10px 20px; font-size: 16px; cursor: pointer; }
+    #status { margin-top: 20px; font-size: 18px; }
   </style>
 </head>
 <body>
   <h1>🐓 Rooster Crow Counter (Sound Test)</h1>
-  <button id="startBtn">🎙 Start Listening</button>
-  <div id="status">Not started</div>
+  <button onclick="startListening()">🎤 Start Listening</button>
+  <div id="status">Not listening...</div>
   <div>Crow Count: <span id="count">0</span></div>
 
   <script>
-    let audioContext, analyser, dataArray, source;
     let crowCount = 0;
-    const threshold = 20; // sensitivity
+    let isListening = false;
+    let lastCrowTime = 0;
+    const cooldown = 3000; // 3 seconds between valid crows
 
-    document.getElementById("startBtn").addEventListener("click", async () => {
+    async function startListening() {
+      const statusEl = document.getElementById("status");
+      const countEl = document.getElementById("count");
+
       try {
-        document.getElementById("status").textContent = "Requesting microphone...";
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        source = audioContext.createMediaStreamSource(stream);
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const analyser = audioContext.createAnalyser();
+        const microphone = audioContext.createMediaStreamSource(stream);
+        microphone.connect(analyser);
 
-        analyser = audioContext.createAnalyser();
         analyser.fftSize = 256;
-        const bufferLength = analyser.frequencyBinCount;
-        dataArray = new Uint8Array(bufferLength);
+        const dataArray = new Uint8Array(analyser.fftSize);
+        isListening = true;
+        statusEl.textContent = "Listening...";
 
-        source.connect(analyser);
-        document.getElementById("status").textContent = "Listening...";
-        listen();
+        function detect() {
+          analyser.getByteFrequencyData(dataArray);
+          const volume = dataArray.reduce((a, b) => a + b) / dataArray.length;
+
+          if (volume > 35) {
+            const now = Date.now();
+            if (now - lastCrowTime > cooldown) {
+              crowCount++;
+              lastCrowTime = now;
+              statusEl.textContent = "Crow detected!";
+              countEl.textContent = crowCount;
+            }
+          }
+
+          if (isListening) requestAnimationFrame(detect);
+        }
+
+        detect();
       } catch (err) {
-        document.getElementById("status").textContent = "Microphone error";
         console.error("Microphone error:", err);
-      }
-    });
-
-    function listen() {
-      requestAnimationFrame(listen);
-      analyser.getByteFrequencyData(dataArray);
-
-      // Calculate average volume
-      let values = 0;
-      for (let i = 0; i < dataArray.length; i++) {
-        values += dataArray[i];
-      }
-      let average = values / dataArray.length;
-
-      // Debug log
-      console.log("Volume:", average);
-
-      if (average > threshold) {
-        crowCount++;
-        document.getElementById("status").textContent = "Crow detected!";
-        document.getElementById("count").textContent = crowCount;
+        statusEl.textContent = "Microphone access denied.";
       }
     }
   </script>
