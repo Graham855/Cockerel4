@@ -1,406 +1,244 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="UTF-8">
   <title>Rooster Crow Counter — AI + Stats + CSV</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/audio@0.8/dist/teachablemachine-audio.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
   <style>
-    body{font-family:Arial,Helvetica,sans-serif;margin:16px;color:#222}
-    h1{margin:0 0 6px}
-    .row{display:flex;flex-wrap:wrap;gap:12px}
-    .card{background:#f7f7f9;border:1px solid #e2e2e6;border-radius:10px;padding:12px;flex:1 1 320px;min-width:280px}
-    .muted{color:#666;font-size:13px}
-    label{display:block;margin:6px 0 4px}
-    input[type=range]{width:100%}
-    .small{font-size:13px}
-    #meter{width:100%;height:14px;background:#eee;border-radius:8px;overflow:hidden;border:1px solid #ccc}
-    #level{height:100%;background:limegreen;width:0}
-    .btn{padding:8px 12px;border-radius:8px;border:1px solid #bbb;background:#fff;cursor:pointer}
-    canvas{max-width:100%}
-    #debug{height:140px;overflow:auto;background:#fff;border:1px dashed #ccc;padding:8px;font-size:12px}
-    table{width:100%;border-collapse:collapse;font-size:13px}
-    th,td{padding:6px;border-bottom:1px solid #eee;text-align:left}
-    .controls-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    h1 { color: #222; }
+    .settings, .logs { margin-top: 20px; padding: 10px; border: 1px solid #ccc; border-radius: 8px; }
+    .charts { margin-top: 20px; }
+    button { margin: 5px; }
   </style>
 </head>
 <body>
   <h1>🐓 Rooster Crow Counter — AI + Stats + CSV</h1>
-  <p class="muted">Place your local Teachable Machine files (<code>model.json</code>, <code>metadata.json</code>, <code>weights.bin</code>) next to this file. Tune settings and use Export to download CSV with daily + hourly data.</p>
 
-  <div class="row">
-    <div class="card">
-      <h3>Live</h3>
-      <button id="startBtn" class="btn">Start Listening</button>
-      <span style="margin-left:10px">Status: <b id="status">Idle</b></span>
-      <p style="margin:10px 0">Detected: <b id="label">—</b></p>
-      <p style="margin:6px 0">Session Count: <b id="sessionCount">0</b></p>
-      <p style="margin:6px 0">Today (logs) total: <b id="todayTotal">0</b></p>
-      <div id="meter"><div id="level"></div></div>
-      <div id="debug" style="margin-top:10px"></div>
-    </div>
-
-    <div class="card">
-      <h3>Settings</h3>
-      <div>
-        <label>Model Confidence Threshold: <span id="confVal">0.60</span></label>
-        <input id="confidence" type="range" min="0" max="1" step="0.01" value="0.6">
-      </div>
-      <div style="margin-top:8px">
-        <label><input type="checkbox" id="useFreq" checked> Use Frequency Filter (optional)</label>
-        <div class="muted">If enabled, both model OR band energy can trigger detection (configurable).</div>
-      </div>
-      <div>
-        <label>Band Threshold (energy): <span id="thresholdVal">30</span></label>
-        <input id="threshold" type="range" min="1" max="150" value="30">
-      </div>
-      <div>
-        <label>Band Start Frequency (Hz): <span id="startFreqVal">800</span></label>
-        <input id="startFreq" type="range" min="100" max="5000" step="50" value="800">
-      </div>
-      <div>
-        <label>Band End Frequency (Hz): <span id="endFreqVal">2000</span></label>
-        <input id="endFreq" type="range" id="endFreq" min="500" max="8000" step="50" value="2000">
-      </div>
-      <div>
-        <label>Cooldown (ms): <span id="coolVal">2000</span></label>
-        <input id="cooldown" type="range" min="300" max="5000" step="100" value="2000">
-      </div>
-
-      <div class="controls-row">
-        <button id="saveBtn" class="btn">💾 Save Settings</button>
-        <button id="resetBtn" class="btn">Reset Session Count</button>
-        <button id="clearLogsBtn" class="btn">Clear Logs</button>
-        <button id="exportBtn" class="btn">⬇️ Export Logs (CSV)</button>
-      </div>
-    </div>
+  <div id="live">
+    <button id="startBtn">Start Listening</button>
+    <p>Status: <span id="status">Idle</span></p>
+    <p>Detected: <span id="detected">—</span></p>
+    <p>Session Count: <span id="sessionCount">0</span></p>
+    <p>Today (logs) total: <span id="todayCount">0</span></p>
+    <textarea id="logBox" rows="6" cols="50" readonly></textarea>
   </div>
 
-  <div class="row" style="margin-top:12px">
-    <div class="card" style="flex:2 1 600px">
-      <h3>Charts</h3>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div><canvas id="hourlyChart" height="160"></canvas></div>
-        <div><canvas id="dailyChart" height="160"></canvas></div>
-      </div>
-    </div>
+  <div class="settings">
+    <h3>⚙ Settings</h3>
+    <label>Model Confidence Threshold:
+      <input type="range" id="confidence" min="0" max="1" step="0.01" value="0.6">
+      <span id="confVal">0.60</span>
+    </label><br><br>
 
-    <div class="card" style="flex:1 1 320px">
-      <h3>Logs</h3>
-      <h4>Today — hourly</h4>
-      <table id="hourlyTable"><thead><tr><th>Hour</th><th>Count</th></tr></thead><tbody></tbody></table>
-      <h4 style="margin-top:8px">Daily totals</h4>
-      <table id="dailyTable"><thead><tr><th>Date</th><th>Count</th></tr></thead><tbody></tbody></table>
-    </div>
+    <label><input type="checkbox" id="useFreq" checked> Use Frequency Filter (optional)</label><br>
+    <label>Band Threshold (energy):
+      <input type="range" id="bandThresh" min="0" max="100" value="30">
+      <span id="bandVal">30</span>
+    </label><br><br>
+
+    <label>Band Start Frequency (Hz):
+      <input type="number" id="bandStart" value="800">
+    </label><br>
+    <label>Band End Frequency (Hz):
+      <input type="number" id="bandEnd" value="2000">
+    </label><br><br>
+
+    <label>Cooldown (ms):
+      <input type="range" id="cooldown" min="500" max="5000" step="100" value="2000">
+      <span id="coolVal">2000</span>
+    </label><br><br>
+
+    <button id="saveSettings">Save Settings</button>
+    <button id="resetSession">Reset Session Count</button>
+    <button id="clearLogs">Clear Logs</button>
+    <button id="exportLogs">Export Logs (CSV)</button>
   </div>
 
-  <script type="module">
-    import * as tmAudio from "https://cdn.jsdelivr.net/npm/@teachablemachine/audio@0.8/dist/audio.esm.js";
-    import Chart from "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js";
+  <div class="logs">
+    <h3>📊 Logs</h3>
+    <h4>Today — hourly</h4>
+    <table border="1" id="hourlyLog">
+      <tr><th>Hour</th><th>Count</th></tr>
+    </table>
+    <h4>Daily totals</h4>
+    <table border="1" id="dailyLog">
+      <tr><th>Date</th><th>Count</th></tr>
+    </table>
+  </div>
 
-    // Local model filenames
-    const MODEL_JSON = "model.json";
-    const METADATA_JSON = "metadata.json";
-    const POS_CLASS = "Cockerel"; // expected label name in your TM model
+  <div class="charts">
+    <h3>📈 Charts</h3>
+    <canvas id="dailyChart" width="400" height="200"></canvas>
+    <canvas id="hourlyChart" width="400" height="200"></canvas>
+  </div>
 
-    // Elements
-    const startBtn = document.getElementById("startBtn");
-    const statusEl = document.getElementById("status");
-    const labelEl = document.getElementById("label");
-    const sessionCountEl = document.getElementById("sessionCount");
-    const todayTotalEl = document.getElementById("todayTotal");
-    const levelEl = document.getElementById("level");
-    const debugEl = document.getElementById("debug");
+<script>
+let sessionCount = 0;
+let todayCount = 0;
+let cooldownActive = false;
+let logs = { hourly: {}, daily: {} };
 
-    const confidenceSlider = document.getElementById("confidence");
-    const confVal = document.getElementById("confVal");
-    const useFreq = document.getElementById("useFreq");
-    const thresholdSlider = document.getElementById("threshold");
-    const thresholdVal = document.getElementById("thresholdVal");
-    const startFreqSlider = document.getElementById("startFreq");
-    const startFreqVal = document.getElementById("startFreqVal");
-    const endFreqSlider = document.getElementById("endFreq");
-    const endFreqVal = document.getElementById("endFreqVal");
-    const cooldownSlider = document.getElementById("cooldown");
-    const coolVal = document.getElementById("coolVal");
-    const saveBtn = document.getElementById("saveBtn");
-    const resetBtn = document.getElementById("resetBtn");
-    const clearLogsBtn = document.getElementById("clearLogsBtn");
-    const exportBtn = document.getElementById("exportBtn");
+let settings = {
+  confidence: 0.6,
+  useFreq: true,
+  bandThresh: 30,
+  bandStart: 800,
+  bandEnd: 2000,
+  cooldown: 2000
+};
+if (localStorage.getItem("crowSettings")) {
+  settings = JSON.parse(localStorage.getItem("crowSettings"));
+}
 
-    const hourlyTableBody = document.querySelector("#hourlyTable tbody");
-    const dailyTableBody = document.querySelector("#dailyTable tbody");
-    let hourlyChart, dailyChart;
+const startBtn = document.getElementById("startBtn");
+const statusEl = document.getElementById("status");
+const detectedEl = document.getElementById("detected");
+const sessionEl = document.getElementById("sessionCount");
+const todayEl = document.getElementById("todayCount");
+const logBox = document.getElementById("logBox");
 
-    // State
-    let tmModel, tmRecognizer;
-    let analyser, dataArray, audioContext;
-    let isListening = false;
-    let lastDetection = 0;
-    let latestModel = null;
+const hourlyChart = new Chart(document.getElementById("hourlyChart"), {
+  type: "bar",
+  data: { labels: Array.from({ length: 24 }, (_, i) => i + ":00"), datasets: [{ label: "Crows per Hour", data: Array(24).fill(0), backgroundColor: "rgba(75,192,192,0.6)" }] }
+});
+const dailyChart = new Chart(document.getElementById("dailyChart"), {
+  type: "line",
+  data: { labels: [], datasets: [{ label: "Daily Crows", data: [], borderColor: "rgba(255,99,132,1)" }] }
+});
 
-    // Settings with defaults (and live UI reflect)
-    const settings = {
-      confidence: parseFloat(confidenceSlider.value),
-      useFreq: useFreq.checked,
-      threshold: parseInt(thresholdSlider.value),
-      startFreq: parseInt(startFreqSlider.value),
-      endFreq: parseInt(endFreqSlider.value),
-      cooldown: parseInt(cooldownSlider.value)
-    };
+document.getElementById("confidence").value = settings.confidence;
+document.getElementById("confVal").textContent = settings.confidence;
+document.getElementById("useFreq").checked = settings.useFreq;
+document.getElementById("bandThresh").value = settings.bandThresh;
+document.getElementById("bandVal").textContent = settings.bandThresh;
+document.getElementById("bandStart").value = settings.bandStart;
+document.getElementById("bandEnd").value = settings.bandEnd;
+document.getElementById("cooldown").value = settings.cooldown;
+document.getElementById("coolVal").textContent = settings.cooldown;
 
-    const LOG_KEY = "crowLogs_v2";
-    const SESSION_KEY = "crowSessionCount";
-    const SETTINGS_KEY = "tmCrowSettings_v2";
+document.getElementById("saveSettings").addEventListener("click", () => {
+  settings.confidence = parseFloat(document.getElementById("confidence").value);
+  settings.useFreq = document.getElementById("useFreq").checked;
+  settings.bandThresh = parseInt(document.getElementById("bandThresh").value);
+  settings.bandStart = parseInt(document.getElementById("bandStart").value);
+  settings.bandEnd = parseInt(document.getElementById("bandEnd").value);
+  settings.cooldown = parseInt(document.getElementById("cooldown").value);
+  localStorage.setItem("crowSettings", JSON.stringify(settings));
+  alert("Settings saved ✅");
+});
 
-    function log(msg){
-      const t = new Date().toLocaleTimeString();
-      debugEl.innerHTML = `[${t}] ${msg}<br>` + debugEl.innerHTML;
+document.getElementById("resetSession").addEventListener("click", () => {
+  sessionCount = 0;
+  sessionEl.textContent = 0;
+});
+
+document.getElementById("clearLogs").addEventListener("click", () => {
+  logs = { hourly: {}, daily: {} };
+  logBox.value = "";
+  updateTables();
+  updateCharts();
+});
+
+document.getElementById("exportLogs").addEventListener("click", () => {
+  let csv = "Date,Hour,Count\n";
+  for (let date in logs.daily) {
+    for (let hour in logs.hourly[date]) {
+      csv += `${date},${hour},${logs.hourly[date][hour]}\n`;
+    }
+  }
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  saveAs(blob, "crow_logs.csv");
+});
+
+startBtn.addEventListener("click", async () => {
+  statusEl.textContent = "Listening...";
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const audioCtx = new AudioContext();
+  const source = audioCtx.createMediaStreamSource(stream);
+  const analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 2048;
+  source.connect(analyser);
+  const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+  function detect() {
+    analyser.getByteFrequencyData(dataArray);
+
+    let energy = 0;
+    let start = Math.floor(settings.bandStart / (audioCtx.sampleRate / analyser.fftSize));
+    let end = Math.floor(settings.bandEnd / (audioCtx.sampleRate / analyser.fftSize));
+    for (let i = start; i < end; i++) {
+      energy += dataArray[i];
+    }
+    energy /= (end - start);
+
+    if (!cooldownActive && energy > settings.bandThresh) {
+      logDetection("Cockerel");
     }
 
-    function dateKey(d=new Date()){ return d.toISOString().slice(0,10); }
-    function loadLogs(){ try{ return JSON.parse(localStorage.getItem(LOG_KEY)||"{}"); }catch{ return {}; } }
-    function saveLogs(logs){ localStorage.setItem(LOG_KEY, JSON.stringify(logs)); }
+    requestAnimationFrame(detect);
+  }
+  detect();
+});
 
-    function ensureToday(logs){
-      const key = dateKey();
-      if(!logs.daily) logs.daily = {};
-      if(!logs.hourly) logs.hourly = {};
-      if(!logs.daily[key]) logs.daily[key] = 0;
-      if(!logs.hourly[key]) logs.hourly[key] = new Array(24).fill(0);
-      return key;
+function logDetection(label) {
+  cooldownActive = true;
+  setTimeout(() => cooldownActive = false, settings.cooldown);
+
+  sessionCount++;
+  todayCount++;
+  sessionEl.textContent = sessionCount;
+  todayEl.textContent = todayCount;
+  detectedEl.textContent = label;
+  logBox.value += `${new Date().toLocaleTimeString()} — ${label}\n`;
+
+  const date = new Date().toLocaleDateString();
+  const hour = new Date().getHours();
+  if (!logs.daily[date]) logs.daily[date] = 0;
+  if (!logs.hourly[date]) logs.hourly[date] = {};
+  if (!logs.hourly[date][hour]) logs.hourly[date][hour] = 0;
+  logs.daily[date]++;
+  logs.hourly[date][hour]++;
+
+  updateTables();
+  updateCharts();
+}
+
+function updateTables() {
+  const hourlyTable = document.getElementById("hourlyLog");
+  hourlyTable.innerHTML = "<tr><th>Hour</th><th>Count</th></tr>";
+  const today = new Date().toLocaleDateString();
+  if (logs.hourly[today]) {
+    for (let hour = 0; hour < 24; hour++) {
+      let count = logs.hourly[today][hour] || 0;
+      hourlyTable.innerHTML += `<tr><td>${hour}:00</td><td>${count}</td></tr>`;
     }
+  }
 
-    function recordCrowToLogs(){
-      const logs = loadLogs();
-      const key = ensureToday(logs);
-      const h = new Date().getHours();
-      logs.daily[key] = (logs.daily[key]||0) + 1;
-      logs.hourly[key][h] = (logs.hourly[key][h]||0) + 1;
-      saveLogs(logs);
-      updateTablesAndCharts(logs);
-      updateTodayTotal();
+  const dailyTable = document.getElementById("dailyLog");
+  dailyTable.innerHTML = "<tr><th>Date</th><th>Count</th></tr>";
+  for (let date in logs.daily) {
+    dailyTable.innerHTML += `<tr><td>${date}</td><td>${logs.daily[date]}</td></tr>`;
+  }
+}
+
+function updateCharts() {
+  const today = new Date().toLocaleDateString();
+  hourlyChart.data.datasets[0].data = Array(24).fill(0);
+  if (logs.hourly[today]) {
+    for (let h in logs.hourly[today]) {
+      hourlyChart.data.datasets[0].data[h] = logs.hourly[today][h];
     }
+  }
+  hourlyChart.update();
 
-    function updateTodayTotal(){
-      const logs = loadLogs();
-      const key = dateKey();
-      const total = (logs.daily && logs.daily[key]) || 0;
-      todayTotalEl.textContent = total;
-    }
-
-    function initCharts(){
-      const ctxH = document.getElementById("hourlyChart").getContext("2d");
-      const ctxD = document.getElementById("dailyChart").getContext("2d");
-      hourlyChart = new Chart(ctxH, {
-        type: 'bar',
-        data: { labels: Array.from({length:24},(_,i)=>String(i).padStart(2,'0')+':00'), datasets:[{ label:'Crows (today)', data:Array(24).fill(0), backgroundColor:'#4caf50'}]},
-        options:{responsive:true, animation:false, scales:{y:{beginAtZero:true}}}
-      });
-      dailyChart = new Chart(ctxD, {
-        type:'line',
-        data:{ labels:[], datasets:[{ label:'Crows (last 7 days)', data:[], borderColor:'#2196f3', backgroundColor:'rgba(33,150,243,0.15)', fill:true }]},
-        options:{responsive:true, animation:false, scales:{y:{beginAtZero:true}}}
-      });
-    }
-
-    function renderHourlyTable(logs, key){
-      const hours = (logs.hourly && logs.hourly[key]) || new Array(24).fill(0);
-      hourlyTableBody.innerHTML = '';
-      for(let i=0;i<24;i++){
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${String(i).padStart(2,'0')}:00</td><td>${hours[i]||0}</td>`;
-        hourlyTableBody.appendChild(tr);
-      }
-    }
-
-    function renderDailyTable(logs){
-      dailyTableBody.innerHTML = '';
-      const entries = Object.entries(logs.daily||{}).sort((a,b)=>b[0].localeCompare(a[0]));
-      for(const [d,c] of entries){
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${d}</td><td>${c}</td>`;
-        dailyTableBody.appendChild(tr);
-      }
-    }
-
-    function updateTablesAndCharts(logs){
-      const key = dateKey();
-      renderHourlyTable(logs, key);
-      renderDailyTable(logs);
-
-      const hours = (logs.hourly && logs.hourly[key]) || new Array(24).fill(0);
-      hourlyChart.data.datasets[0].data = hours;
-      hourlyChart.update();
-
-      const labels=[], data=[];
-      for(let i=6;i>=0;i--){
-        const d = new Date(); d.setDate(d.getDate()-i);
-        const k = dateKey(d);
-        labels.push(k);
-        data.push((logs.daily && logs.daily[k]) || 0);
-      }
-      dailyChart.data.labels = labels;
-      dailyChart.data.datasets[0].data = data;
-      dailyChart.update();
-    }
-
-    // Load/save settings
-    function loadSettings(){
-      try{
-        const s = JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}');
-        if(s.confidence!=null){ settings.confidence = +s.confidence; confidenceSlider.value = settings.confidence; confVal.textContent = settings.confidence.toFixed(2); }
-        if(s.useFreq!=null){ settings.useFreq = !!s.useFreq; useFreq.checked = settings.useFreq; }
-        if(s.threshold!=null){ settings.threshold = +s.threshold; thresholdSlider.value = settings.threshold; thresholdVal.textContent = settings.threshold; }
-        if(s.startFreq!=null){ settings.startFreq = +s.startFreq; startFreqSlider.value = settings.startFreq; startFreqVal.textContent = settings.startFreq; }
-        if(s.endFreq!=null){ settings.endFreq = +s.endFreq; endFreqSlider.value = settings.endFreq; endFreqVal.textContent = settings.endFreq; }
-        if(s.cooldown!=null){ settings.cooldown = +s.cooldown; cooldownSlider.value = settings.cooldown; coolVal.textContent = settings.cooldown; }
-        log('Settings loaded.');
-      }catch(e){ log('Failed to load settings'); }
-    }
-
-    function saveSettings(){
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-      log('Settings saved.');
-    }
-
-    // Session count persistence
-    function loadSessionCount(){
-      const v = parseInt(localStorage.getItem(SESSION_KEY) || '0', 10) || 0;
-      crowSession = v;
-      sessionCountEl.textContent = crowSession;
-    }
-    function saveSessionCount(){
-      localStorage.setItem(SESSION_KEY, String(crowSession));
-    }
-
-    let crowSession = 0;
-
-    // Export CSV: both daily totals and hourly breakdowns
-    function exportCSV(){
-      const logs = loadLogs();
-      // header
-      let csv = 'Date,DailyTotal,Hour,HourCount\r\n';
-      for(const [date, total] of Object.entries(logs.daily || {})){
-        csv += `${date},${total},,\r\n`;
-        const hours = logs.hourly && logs.hourly[date] ? logs.hourly[date] : new Array(24).fill(0);
-        hours.forEach((hcount, hr)=>{
-          csv += `${date},,${hr}:00,${hcount}\r\n`;
-        });
-      }
-      const blob = new Blob([csv], {type: 'text/csv'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'crow_logs.csv';
-      a.click();
-      URL.revokeObjectURL(url);
-    }
-
-    // Detection with TM + optional band energy
-    async function startListening(){
-      if(isListening) return;
-      statusEl.textContent = 'Loading model...';
-      try{
-        tmModel = await tmAudio.load(MODEL_JSON, METADATA_JSON);
-        tmRecognizer = new tmAudio.AudioRecognizer(tmModel);
-        await tmRecognizer.open();
-
-        // setup analyser using recognizer's audio context if available
-        audioContext = tmRecognizer._audioContext || new (window.AudioContext || window.webkitAudioContext)();
-        analyser = audioContext.createAnalyser();
-        analyser.fftSize = 2048;
-        dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-        // connect recognizer's stream to analyser if present
-        const stream = tmRecognizer._mediaStream;
-        if(stream){
-          const src = audioContext.createMediaStreamSource(stream);
-          src.connect(analyser);
-        } else {
-          // fallback: request mic
-          const s = await navigator.mediaDevices.getUserMedia({audio:true});
-          const src = audioContext.createMediaStreamSource(s);
-          src.connect(analyser);
-        }
-
-        // begin listening with TM
-        tmRecognizer.listen(result=>{
-          const highest = result.scores.reduce((p,score,idx)=> score>p.score?{score,idx}:p,{score:-Infinity,idx:-1});
-          const lbl = tmModel.labels[highest.idx] || 'Unknown';
-          const score = highest.score || 0;
-          latestModel = { label: lbl, score };
-          labelEl.textContent = `${lbl} (${(score*100).toFixed(1)}%)`;
-        });
-
-        isListening = true;
-        statusEl.textContent = 'Listening (AI + band)...';
-        log('Model loaded and listening.');
-        detectLoop();
-      }catch(err){
-        console.error(err);
-        statusEl.textContent = 'Model load error';
-        log('Error loading model: ' + (err.message||err));
-      }
-    }
-
-    function detectLoop(){
-      if(!isListening) return;
-      analyser.getByteFrequencyData(dataArray);
-      const nyquist = audioContext.sampleRate/2;
-      const binSize = nyquist / dataArray.length;
-      const lo = Math.max(0, Math.min(settings.startFreq, settings.endFreq));
-      const hi = Math.max(0, Math.max(settings.startFreq, settings.endFreq));
-      const startBin = Math.max(0, Math.floor(lo / binSize));
-      const endBin = Math.min(dataArray.length-1, Math.floor(hi / binSize));
-      let sum=0, n=0;
-      for(let i=startBin;i<=endBin;i++){ sum += dataArray[i]; n++; }
-      const avgEnergy = n ? sum/n : 0;
-      levelEl.style.width = Math.min(100, avgEnergy) + '%';
-      log(`Band ${lo}-${hi}Hz energy: ${avgEnergy.toFixed(2)}`);
-
-      const now = Date.now();
-      let modelOk = false, bandOk = false;
-      if(latestModel && latestModel.label === POS_CLASS && latestModel.score >= settings.confidence) modelOk = true;
-      if(avgEnergy > settings.threshold) bandOk = true;
-
-      let detected = false;
-      if(modelOk) detected = true;
-      if(settings.useFreq && bandOk) detected = true;
-
-      if(detected && (now - lastDetection > settings.cooldown)){
-        // increment session and logs separately
-        crowSession++;
-        sessionCountEl.textContent = crowSession;
-        saveSessionCount();
-
-        // record to daily/hourly logs
-        recordCrowToLogs();
-
-        lastDetection = now;
-        log(`CROW DETECTED (modelOk=${modelOk} bandOk=${bandOk}) — session ${crowSession}`);
-      }
-
-      requestAnimationFrame(detectLoop);
-    }
-
-    // wire UI
-    confidenceSlider.addEventListener('input', e=>{ settings.confidence = parseFloat(e.target.value); confVal.textContent = settings.confidence.toFixed(2); });
-    thresholdSlider.addEventListener('input', e=>{ settings.threshold = parseInt(e.target.value); thresholdVal.textContent = settings.threshold; });
-    startFreqSlider.addEventListener('input', e=>{ settings.startFreq = parseInt(e.target.value); startFreqVal.textContent = settings.startFreq; });
-    endFreqSlider.addEventListener('input', e=>{ settings.endFreq = parseInt(e.target.value); endFreqVal.textContent = settings.endFreq; });
-    cooldownSlider.addEventListener('input', e=>{ settings.cooldown = parseInt(e.target.value); coolVal.textContent = settings.cooldown; });
-    useFreq.addEventListener('change', e=>{ settings.useFreq = useFreq.checked; });
-
-    saveBtn.addEventListener('click', ()=>{ saveSettings(); });
-    resetBtn.addEventListener('click', ()=>{ crowSession=0; sessionCountEl.textContent = crowSession; saveSessionCount(); log('Session reset'); });
-    clearLogsBtn.addEventListener('click', ()=>{ localStorage.removeItem(LOG_KEY); log('Logs cleared'); updateTablesAndCharts(loadLogs()); updateTodayTotal(); });
-    exportBtn.addEventListener('click', ()=>{ exportCSV(); });
-
-    // init
-    initCharts();
-    loadSettings();
-    updateTablesAndCharts(loadLogs());
-    loadSessionCount();
-  </script>
+  dailyChart.data.labels = Object.keys(logs.daily);
+  dailyChart.data.datasets[0].data = Object.values(logs.daily);
+  dailyChart.update();
+}
+</script>
 </body>
 </html>
