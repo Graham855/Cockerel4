@@ -2,165 +2,106 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Rooster Crow Counter — AI + Stats + CSV</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     h1 { color: #222; }
-    #logs { width: 100%; height: 100px; }
-    .settings, .logs, .charts { margin-top: 20px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
-    .settings label { display: block; margin: 5px 0; }
-    button { margin: 5px 5px 5px 0; }
+    #settings, #logs, #charts { margin-top: 20px; padding: 10px; border: 1px solid #ccc; border-radius: 6px; }
+    .setting { margin: 5px 0; }
+    .label { font-weight: bold; }
+    .log-box { width: 100%; height: 80px; }
   </style>
 </head>
 <body>
   <h1>🐓 Rooster Crow Counter — AI + Stats + CSV</h1>
 
-  <div>
+  <div id="live">
     <button id="startBtn">Start Listening</button>
     <p>Status: <span id="status">Idle</span></p>
     <p>Detected: <span id="detected">—</span></p>
     <p>Session Count: <span id="sessionCount">0</span></p>
     <p>Today (logs) total: <span id="todayCount">0</span></p>
-    <textarea id="logs" readonly></textarea>
+    <textarea class="log-box" id="logBox" readonly></textarea>
   </div>
 
-  <!-- Settings Panel -->
-  <div class="settings">
-    <h3>⚙️ Settings</h3>
-
-    <label>Model Confidence Threshold:
+  <div id="settings">
+    <h3>⚙ Settings</h3>
+    <div class="setting">
+      <label class="label">Model Confidence Threshold:</label>
       <input type="range" id="confidenceThreshold" min="0" max="1" step="0.01" value="0.6">
-    </label>
-
-    <label><input type="checkbox" id="useFrequency" checked> Use Frequency Filter (optional)</label>
-
-    <label>Band Threshold (energy):
+    </div>
+    <div class="setting">
+      <label><input type="checkbox" id="useFreqFilter" checked> Use Frequency Filter (optional)</label>
+    </div>
+    <div class="setting">
+      <label class="label">Band Threshold (energy):</label>
       <input type="range" id="bandThreshold" min="0" max="100" step="1" value="30">
-    </label>
-
-    <label>Band Start Frequency (Hz):
-      <input type="number" id="bandStart" value="800" min="0" max="22050">
-    </label>
-
-    <label>Band End Frequency (Hz):
-      <input type="number" id="bandEnd" value="2000" min="0" max="22050">
-    </label>
-
-    <label>Cooldown (ms):
-      <input type="range" id="cooldown" min="100" max="10000" step="100" value="2000">
-    </label>
-
-    <button onclick="saveSettings()">Save Settings</button>
-    <button onclick="resetSession()">Reset Session Count</button>
-    <button onclick="clearLogs()">Clear Logs</button>
-    <button onclick="exportLogs()">Export Logs (CSV)</button>
+    </div>
+    <div class="setting">
+      <label class="label">Band Start Frequency (Hz):</label>
+      <input type="number" id="bandStart" value="800" min="20" max="20000">
+    </div>
+    <div class="setting">
+      <label class="label">Band End Frequency (Hz):</label>
+      <input type="number" id="bandEnd" value="2000" min="20" max="20000">
+    </div>
+    <div class="setting">
+      <label class="label">Cooldown (ms):</label>
+      <input type="range" id="cooldown" min="100" max="5000" step="100" value="2000">
+    </div>
+    <button id="saveBtn">Save Settings</button>
+    <button id="resetSessionBtn">Reset Session Count</button>
+    <button id="clearLogsBtn">Clear Logs</button>
+    <button id="exportBtn">Export Logs (CSV)</button>
   </div>
 
-  <!-- Logs -->
-  <div class="logs">
+  <div id="logs">
     <h3>📊 Logs</h3>
-    <h4>Today — hourly</h4>
-    <table border="1" id="hourlyLog">
-      <tr><th>Hour</th><th>Count</th></tr>
-    </table>
-
-    <h4>Daily totals</h4>
-    <table border="1" id="dailyLog">
-      <tr><th>Date</th><th>Count</th></tr>
-    </table>
+    <p><strong>Today — hourly</strong></p>
+    <table border="1" id="hourlyLog"><tr><th>Hour</th><th>Count</th></tr></table>
+    <p><strong>Daily totals</strong></p>
+    <table border="1" id="dailyLog"><tr><th>Date</th><th>Count</th></tr></table>
   </div>
-
-  <!-- Load Teachable Machine -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/sound@0.8/dist/teachablemachine-sound.min.js"></script>
 
   <script>
-    let model, microphone, isListening = false;
-    let sessionCount = 0, todayCount = 0, logs = [];
-    let settings = {
-      confidenceThreshold: 0.6,
-      useFrequency: true,
-      bandThreshold: 30,
-      bandStart: 800,
-      bandEnd: 2000,
-      cooldown: 2000
-    };
-    let lastDetected = 0;
+    let model;
+    let sessionCount = 0;
+    let todayCount = 0;
+    let logs = [];
 
-    async function init() {
-      const modelURL = "model.json"; // must exist in repo
-      model = await tmSound.load(modelURL);
-      document.getElementById("status").innerText = "Ready";
-    }
-
-    async function startListening() {
-      if (!model) await init();
-      if (!microphone) microphone = new tmSound.Microphone();
-      await microphone.setup();
-      microphone.play();
-      isListening = true;
-      document.getElementById("status").innerText = "Listening...";
-      listenLoop();
-    }
-
-    async function listenLoop() {
-      if (!isListening) return;
-      const prediction = await model.predict(microphone);
-      let high = prediction.reduce((a,b) => a.probability > b.probability ? a : b);
-
-      let now = Date.now();
-      if (high.probability > settings.confidenceThreshold &&
-          now - lastDetected > settings.cooldown) {
-        lastDetected = now;
-        logDetection(high.className);
+    async function loadModel() {
+      try {
+        model = await tf.loadLayersModel("model.json");
+        console.log("✅ Model loaded");
+      } catch (err) {
+        console.error("❌ Model load failed", err);
       }
-
-      requestAnimationFrame(listenLoop);
     }
 
-    function logDetection(label) {
-      sessionCount++;
-      todayCount++;
-      document.getElementById("detected").innerText = label;
-      document.getElementById("sessionCount").innerText = sessionCount;
-      document.getElementById("todayCount").innerText = todayCount;
-
-      let time = new Date().toLocaleTimeString();
-      logs.push({ time, label });
-      document.getElementById("logs").value += `[${time}] ${label}\n`;
+    function startListening() {
+      document.getElementById("status").innerText = "Listening...";
+      // TODO: Hook microphone + model prediction here
     }
 
-    function saveSettings() {
-      settings.confidenceThreshold = parseFloat(document.getElementById("confidenceThreshold").value);
-      settings.useFrequency = document.getElementById("useFrequency").checked;
-      settings.bandThreshold = parseInt(document.getElementById("bandThreshold").value);
-      settings.bandStart = parseInt(document.getElementById("bandStart").value);
-      settings.bandEnd = parseInt(document.getElementById("bandEnd").value);
-      settings.cooldown = parseInt(document.getElementById("cooldown").value);
-      alert("Settings saved!");
-    }
-
-    function resetSession() {
-      sessionCount = 0;
-      document.getElementById("sessionCount").innerText = 0;
-    }
-
-    function clearLogs() {
-      logs = [];
-      document.getElementById("logs").value = "";
-    }
-
-    function exportLogs() {
-      let csv = "time,label\n" + logs.map(l => `${l.time},${l.label}`).join("\n");
-      let blob = new Blob([csv], { type: "text/csv" });
-      let url = URL.createObjectURL(blob);
-      let a = document.createElement("a");
-      a.href = url;
+    function exportCSV() {
+      let csv = "Date,Hour,Count\n";
+      logs.forEach(l => {
+        csv += `${l.date},${l.hour},${l.count}\n`;
+      });
+      const blob = new Blob([csv], { type: "text/csv" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
       a.download = "crow_logs.csv";
       a.click();
     }
 
     document.getElementById("startBtn").addEventListener("click", startListening);
+    document.getElementById("exportBtn").addEventListener("click", exportCSV);
+
+    // Load the model on page load
+    loadModel();
   </script>
 </body>
 </html>
